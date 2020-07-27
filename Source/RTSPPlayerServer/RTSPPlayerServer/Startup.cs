@@ -33,10 +33,15 @@ namespace RTSPPlayerServer
                 INetworkStream networkStream = new NetworkStream(networkSerializer);
                 IInterprocessStream interprocessStream = new InterprocessStream(interprocessSerializer);
 
-                IMediaServer mediaServer = new MediaServer(networkStream, interprocessStream);
-                mediaServer.Name = args[0];
-                mediaServer.AudioBaseName = args.Length > 1 ? args[1] : string.Empty;
-                mediaServer.VideoBaseName = args.Length > 2 ? args[2] : string.Empty;
+                var serverName = args[0];
+                var audioBaseName = args.Length > 1 ? args[1] : string.Empty;
+                var videoBaseName = args.Length > 2 ? args[2] : string.Empty;
+                var telemetryInterval = args.Length > 3 && double.TryParse(args[3], out var result) ? result : 1000.0;
+
+                IMediaServer mediaServer = new MediaServer(networkStream, interprocessStream, telemetryInterval);
+                mediaServer.Name = serverName;
+                mediaServer.AudioBaseName = audioBaseName;
+                mediaServer.VideoBaseName = videoBaseName;
                 mediaServer.Start();
                 mediaServer.Wait();
             }

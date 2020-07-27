@@ -39,6 +39,11 @@ namespace RTSPPlayerServer.Streams.Network
 		/// Indicates whether the network stream is active.
 		/// </summary>
 		public bool IsActive => !_cancellationTokenSource?.IsCancellationRequested ?? false;
+		
+		/// <summary>
+		/// Indicates whether the network stream is healthy.
+		/// </summary>
+		public bool IsHealthy { get; private set; } = true;
 
 		/// <summary>
 		/// Constructs a network stream with the specified network serializer.
@@ -55,6 +60,8 @@ namespace RTSPPlayerServer.Streams.Network
 		public void Start()
 		{
 			if (IsActive) return;
+
+			IsHealthy = true;
 			
 			_cancellationTokenSource = new CancellationTokenSource();
 			var cancellationToken = _cancellationTokenSource.Token;
@@ -135,9 +142,14 @@ namespace RTSPPlayerServer.Streams.Network
 					}
 				}
 			}
-			catch (Exception e)
+			catch (OperationCanceledException)
 			{
-				Console.WriteLine(e);
+				
+			}
+			catch (Exception)
+			{
+				IsHealthy = false;
+				Stop();
 			}
 		}
     }

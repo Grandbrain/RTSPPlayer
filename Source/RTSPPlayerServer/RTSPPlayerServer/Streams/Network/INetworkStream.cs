@@ -14,6 +14,11 @@ namespace RTSPPlayerServer.Streams.Network
         bool IsActive { get; }
         
         /// <summary>
+        /// Indicates whether the network stream is healthy.
+        /// </summary>
+        bool IsHealthy { get; }
+        
+        /// <summary>
         /// Starts the network stream.
         /// </summary>
         void Start();

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Timers;
 using RtspClientSharp;
 using RtspClientSharp.RawFrames;
 using RtspClientSharp.RawFrames.Audio;
@@ -27,6 +28,11 @@ namespace RTSPPlayerServer.Servers.Media
         /// </summary>
         private readonly IDictionary<string, Tuple<IMediaStream, EndPoint>> _mediaStreams =
             new Dictionary<string, Tuple<IMediaStream, EndPoint>>();
+        
+        /// <summary>
+        /// Telemetry timer.
+        /// </summary>
+        private readonly Timer _telemetryTimer = new Timer();
 
         /// <summary>
         /// Network stream.
@@ -58,11 +64,17 @@ namespace RTSPPlayerServer.Servers.Media
         /// </summary>
         /// /// <param name="networkStream">Network stream.</param>
         /// <param name="interprocessStream">Interprocess stream.</param>
-        public MediaServer(INetworkStream networkStream, IInterprocessStream interprocessStream)
+        /// <param name="telemetryInterval">Telemetry interval.</param>
+        public MediaServer(INetworkStream networkStream, IInterprocessStream interprocessStream,
+            double telemetryInterval)
         {
             _networkStream = networkStream ?? throw new ArgumentNullException(nameof(networkStream));
+            
             _interprocessStream = interprocessStream ?? throw new ArgumentNullException(nameof(interprocessStream));
             _interprocessStream.FrameReceived += OnMessageReceived;
+            
+            _telemetryTimer.Interval = telemetryInterval;
+            _telemetryTimer.Elapsed += OnTelemetryTimeout;
         }
 
         /// <summary>
@@ -72,6 +84,7 @@ namespace RTSPPlayerServer.Servers.Media
         {
             _networkStream?.Start();
             _interprocessStream?.Start();
+            _telemetryTimer?.Start();
         }
 
         /// <summary>
@@ -82,6 +95,7 @@ namespace RTSPPlayerServer.Servers.Media
             _mediaStreams?.Values.ForEach(tuple => tuple?.Item1?.Stop());
             _networkStream?.Stop();
             _interprocessStream?.Stop();
+            _telemetryTimer?.Stop();
         }
 
         /// <summary>
@@ -119,7 +133,8 @@ namespace RTSPPlayerServer.Servers.Media
                 DataSegments = GetDataSegments(rawFrame, metadataRequired)
             };
             
-            _networkStream.TrySend(networkFrame, endPoint);
+            if (_networkStream?.IsHealthy ?? false) 
+                _networkStream?.TrySend(networkFrame, endPoint);
         }
 
         /// <summary>
@@ -129,24 +144,46 @@ namespace RTSPPlayerServer.Servers.Media
         /// <param name="interprocessFrame">Interprocess frame.</param>
         private void OnMessageReceived(object sender, InterprocessFrame interprocessFrame)
         {
-            if (!interprocessFrame.ParameterDictionary.TryGetValue("id", out var id) ||
-                !interprocessFrame.ParameterDictionary.TryGetValue("command", out var command))
+            if (interprocessFrame.ParameterDictionary.TryGetValue("command", out var command))
+                DispatchCommand(command, interprocessFrame.ParameterDictionary);
+        }
+
+        /// <summary>
+        /// Called when the telemetry interval elapses.
+        /// </summary>
+        /// <param name="sender">Sender object.</param>
+        /// <param name="elapsedEventArgs">Elapsed event arguments.</param>
+        private void OnTelemetryTimeout(object sender, ElapsedEventArgs elapsedEventArgs)
+        {
+            var parameterDictionary = new Dictionary<string, string>();
+
+            foreach (var (key, value) in _mediaStreams)
             {
-                interprocessFrame.ParameterDictionary.Clear();
-                interprocessFrame.ParameterDictionary.AddOrUpdate("result", false.ToString());
+                var active = value?.Item1?.IsActive switch
+                {
+                    true => "yes",
+                    _ => "no"
+                };
+
+                var healthy = value?.Item1?.IsHealthy switch
+                {
+                    true => "yes",
+                    _ => "no"
+                };
+
+                var tracks = value?.Item1?.ConnectionParameters?.RequiredTracks switch
+                {
+                    RequiredTracks.Video => "video",
+                    RequiredTracks.Audio => "audio",
+                    RequiredTracks.All => "all",
+                    _ => "none"
+                };
+                
+                parameterDictionary.AddOrUpdate(key, $"{active}|{healthy}|{tracks}");
             }
-            else if (string.Compare(command, "close", StringComparison.InvariantCultureIgnoreCase) == 0)
-            {
-                Stop();
-                interprocessFrame.ParameterDictionary.Clear();
-            }
-            else
-            {
-                var result = DispatchCommand(command, interprocessFrame.ParameterDictionary);
-                interprocessFrame.ParameterDictionary.Clear();
-                interprocessFrame.ParameterDictionary.AddOrUpdate("id", id);
-                interprocessFrame.ParameterDictionary.AddOrUpdate("result", result.ToString());
-            }
+
+            if (_interprocessStream?.IsHealthy ?? false)
+                _interprocessStream?.TrySend(new InterprocessFrame {ParameterDictionary = parameterDictionary});
         }
 
         /// <summary>
@@ -208,23 +245,32 @@ namespace RTSPPlayerServer.Servers.Media
         /// </summary>
         /// <param name="command">Command.</param>
         /// <param name="dictionary">Configuration dictionary.</param>
-        /// <returns></returns>
-        private bool DispatchCommand(string command, IDictionary<string, string> dictionary)
+        private void DispatchCommand(string command, IDictionary<string, string> dictionary)
         {
             try
             {
-                return command switch
+                switch (command)
                 {
-                    "add" => AddMediaStream(dictionary),
-                    "remove" => RemoveMediaStream(dictionary),
-                    "start" => StartMediaStream(dictionary),
-                    "stop" => StopMediaStream(dictionary),
-                    _ => false
-                };
+                    case "add":
+                        AddMediaStream(dictionary);
+                        break;
+                    case "remove":
+                        RemoveMediaStream(dictionary);
+                        break;
+                    case "start":
+                        StartMediaStream(dictionary);
+                        break;
+                    case "stop":
+                        StopMediaStream(dictionary);
+                        break;
+                    case "close":
+                        Stop();
+                        break;
+                }
             }
             catch (Exception)
             {
-                return false;
+
             }
         }
 
@@ -232,12 +278,12 @@ namespace RTSPPlayerServer.Servers.Media
         /// Adds a new media stream.
         /// </summary>
         /// <param name="dictionary">Configuration dictionary.</param>
-        private bool AddMediaStream(IDictionary<string, string> dictionary)
+        private void AddMediaStream(IDictionary<string, string> dictionary)
         {
             if (!dictionary.TryGetValue("name", out var name) ||
                 !dictionary.TryGetValue("url", out var uri) ||
                 !Uri.TryCreate(uri, UriKind.Absolute, out var connectionUri))
-                return false;
+                return;
 
             dictionary.TryGetValue("media", out var media);
             dictionary.TryGetValue("transport", out var transport);
@@ -289,35 +335,31 @@ namespace RTSPPlayerServer.Servers.Media
             IMediaStream mediaStream = new MediaStream(connectionParameters, timeSpan);
             mediaStream.FrameReceived += OnFrameReceived;
 
-            if (!RemoveMediaStream(dictionary)) return false;
+            RemoveMediaStream(dictionary);
             _mediaStreams.AddOrUpdate(name, Tuple.Create(mediaStream, null as EndPoint));
-
-            return true;
         }
 
         /// <summary>
         /// Removes an existing media stream.
         /// </summary>
         /// <param name="dictionary">Configuration dictionary.</param>
-        private bool RemoveMediaStream(IDictionary<string, string> dictionary)
+        private void RemoveMediaStream(IDictionary<string, string> dictionary)
         {
             if (!dictionary.TryGetValue("name", out var name)) 
-                return false;
+                return;
 
             if (_mediaStreams.ContainsKey(name))
                 _mediaStreams[name]?.Item1?.Stop();
 
             _mediaStreams.Remove(name);
             if (_mediaStreams.ContainsKey(name)) _mediaStreams[name] = null;
-
-            return true;
         }
 
         /// <summary>
         /// Starts an existing media stream.
         /// </summary>
         /// <param name="dictionary">Configuration dictionary.</param>
-        private bool StartMediaStream(IDictionary<string, string> dictionary)
+        private void StartMediaStream(IDictionary<string, string> dictionary)
         {
             if (!dictionary.TryGetValue("name", out var name) ||
                 !dictionary.TryGetValue("address", out var address) ||
@@ -326,28 +368,25 @@ namespace RTSPPlayerServer.Servers.Media
                 !IPAddress.TryParse(address, out var ipAddress) ||
                 !int.TryParse(port, out var ipPort) ||
                 tuple?.Item1 == null) 
-                return false;
+                return;
             
             tuple = Tuple.Create(tuple.Item1, new IPEndPoint(ipAddress, ipPort) as EndPoint);
             _mediaStreams.AddOrUpdate(name, tuple);
             tuple.Item1.Start();
-
-            return true;
         }
 
         /// <summary>
         /// Stops an existing media stream.
         /// </summary>
         /// <param name="dictionary">Configuration dictionary.</param>
-        private bool StopMediaStream(IDictionary<string, string> dictionary)
+        private void StopMediaStream(IDictionary<string, string> dictionary)
         {
             if (!dictionary.TryGetValue("name", out var name) ||
                 !_mediaStreams.TryGetValue(name, out var tuple) ||
                 tuple?.Item1 == null) 
-                return false;
+                return;
 
             tuple.Item1.Stop();
-            return true;
         }
     }
 }

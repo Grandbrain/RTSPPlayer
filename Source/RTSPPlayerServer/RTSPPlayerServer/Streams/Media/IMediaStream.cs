@@ -14,6 +14,11 @@ namespace RTSPPlayerServer.Streams.Media
         /// Indicates whether the media stream is active.
         /// </summary>
         bool IsActive { get; }
+        
+        /// <summary>
+        /// Indicates whether the media stream is healthy.
+        /// </summary>
+        bool IsHealthy { get; }
 
         /// <summary>
         /// Contains the total number of frames received.

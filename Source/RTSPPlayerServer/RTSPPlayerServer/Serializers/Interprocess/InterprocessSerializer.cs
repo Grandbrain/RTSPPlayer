@@ -14,7 +14,7 @@ namespace RTSPPlayerServer.Serializers.Interprocess
         public string Serialize(InterprocessFrame interprocessFrame)
         {
             return interprocessFrame?.ParameterDictionary?.Aggregate(string.Empty,
-                (current, parameter) => current + $"{parameter.Key}={parameter.Value}").ToLower() ?? string.Empty;
+                (current, parameter) => current + " " + $"{parameter.Key}={parameter.Value}").ToLower() ?? string.Empty;
         }
 
         /// <summary>

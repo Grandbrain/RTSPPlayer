@@ -40,11 +40,21 @@ namespace RTSPPlayerServer.Streams.Media
         /// Cancellation token source.
         /// </summary>
         private CancellationTokenSource _cancellationTokenSource;
+        
+        /// <summary>
+        /// Number of attempts to continue the operation.
+        /// </summary>
+        private const int NumberOfAttempts = 5;
 
         /// <summary>
         /// Indicates whether the media stream is active.
         /// </summary>
         public bool IsActive => !_cancellationTokenSource?.IsCancellationRequested ?? false;
+
+        /// <summary>
+        /// Indicates whether the media stream is healthy.
+        /// </summary>
+        public bool IsHealthy { get; private set; } = true;
 
         /// <summary>
         /// Contains the total number of frames received.
@@ -90,6 +100,8 @@ namespace RTSPPlayerServer.Streams.Media
         public void Start()
         {
             if (IsActive) return;
+
+            IsHealthy = true;
 
             _cancellationTokenSource = new CancellationTokenSource();
             var cancellationToken = _cancellationTokenSource.Token;
@@ -147,28 +159,37 @@ namespace RTSPPlayerServer.Streams.Media
                 using var client = new RtspClient(ConnectionParameters);
                 client.FrameReceived += OnFrameReceived;
 
+                var remainingConnectAttempts = NumberOfAttempts;
+
                 while (true)
                 {
                     OnStatusChanged("Connecting...");
 
                     try
                     {
+                        --remainingConnectAttempts;
                         await client.ConnectAsync(cancellationToken);
                     }
                     catch (InvalidCredentialException)
                     {
                         OnStatusChanged("Invalid login and/or password");
+
+                        if (remainingConnectAttempts <= 0) throw;
+
                         await Task.Delay(_retryDelay, cancellationToken);
                         continue;
                     }
                     catch (RtspClientException e)
                     {
                         OnStatusChanged(e.ToString());
+                        if (remainingConnectAttempts <= 0) throw;
+
                         await Task.Delay(_retryDelay, cancellationToken);
                         continue;
                     }
 
                     OnStatusChanged("Receiving frames...");
+                    remainingConnectAttempts = NumberOfAttempts;
 
                     try
                     {
@@ -183,7 +204,12 @@ namespace RTSPPlayerServer.Streams.Media
             }
             catch (OperationCanceledException)
             {
-
+                
+            }
+            catch (Exception)
+            {
+                IsHealthy = false;
+                Stop();
             }
         }
 

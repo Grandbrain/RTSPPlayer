@@ -14,6 +14,11 @@ namespace RTSPPlayerServer.Streams.Interprocess
         bool IsActive { get; }
         
         /// <summary>
+        /// Indicates whether the interprocess stream is healthy.
+        /// </summary>
+        bool IsHealthy { get; }
+        
+        /// <summary>
         /// Event handler that processes received interprocess frames.
         /// </summary>
         EventHandler<InterprocessFrame> FrameReceived { get; set; }
@@ -32,5 +37,11 @@ namespace RTSPPlayerServer.Streams.Interprocess
         /// Waits until the interprocess stream finishes work.
         /// </summary>
         void Wait();
+        
+        /// <summary>
+        /// Sends an interprocess frame to the standard output.
+        /// </summary>
+        /// <param name="interprocessFrame">Interprocess frame.</param>
+        bool TrySend(InterprocessFrame interprocessFrame);
     }
 }

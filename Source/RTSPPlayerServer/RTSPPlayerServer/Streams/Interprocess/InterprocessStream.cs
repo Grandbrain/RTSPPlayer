@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,14 +14,25 @@ namespace RTSPPlayerServer.Streams.Interprocess
     internal class InterprocessStream : IInterprocessStream
     {
         /// <summary>
+        /// A thread-safe collection for storing interprocess frames to be sent.
+        /// </summary>
+        private readonly BlockingCollection<InterprocessFrame> _blockingCollection = 
+            new BlockingCollection<InterprocessFrame>();
+        
+        /// <summary>
         /// Interprocess serializer.
         /// </summary>
         private readonly IInterprocessSerializer _interprocessSerializer;
         
         /// <summary>
-        /// Work task.
+        /// Asynchronous task to receive interprocess frames.
         /// </summary>
-        private Task _task = Task.CompletedTask;
+        private Task _receiveTask = Task.CompletedTask;
+        
+        /// <summary>
+        /// Asynchronous task to send interprocess frames.
+        /// </summary>
+        private Task _sendTask = Task.CompletedTask;
         
         /// <summary>
         /// Cancellation token source.
@@ -31,6 +43,11 @@ namespace RTSPPlayerServer.Streams.Interprocess
         /// Indicates whether the interprocess stream is active.
         /// </summary>
         public bool IsActive => !_cancellationTokenSource?.IsCancellationRequested ?? false;
+        
+        /// <summary>
+        /// Indicates whether the interprocess stream is healthy.
+        /// </summary>
+        public bool IsHealthy { get; private set; } = true;
 
         /// <summary>
         /// Event handler that processes received interprocess frames.
@@ -52,11 +69,14 @@ namespace RTSPPlayerServer.Streams.Interprocess
         public void Start()
         {
             if (IsActive) return;
+
+            IsHealthy = true;
             
             _cancellationTokenSource = new CancellationTokenSource();
             var cancellationToken = _cancellationTokenSource.Token;
             
-            _task = _task.ContinueWith(_ => ReceiveAsync(cancellationToken), cancellationToken).Unwrap();
+            _receiveTask = _receiveTask.ContinueWith(_ => ReceiveAsync(cancellationToken), cancellationToken).Unwrap();
+            _sendTask = _sendTask.ContinueWith(_ => SendAsync(cancellationToken), cancellationToken).Unwrap();
         }
 
         /// <summary>
@@ -82,7 +102,8 @@ namespace RTSPPlayerServer.Streams.Interprocess
         {
             try
             {
-                _task?.Wait(_cancellationTokenSource?.Token ?? new CancellationToken(true));
+                _receiveTask?.Wait(_cancellationTokenSource?.Token ?? new CancellationToken(true));
+                _sendTask?.Wait(_cancellationTokenSource?.Token ?? new CancellationToken(true));
             }
             catch (OperationCanceledException)
             {
@@ -95,7 +116,16 @@ namespace RTSPPlayerServer.Streams.Interprocess
         }
 
         /// <summary>
-        /// Asynchronously receives interprocess messages.
+        /// Sends an interprocess frame to the standard output.
+        /// </summary>
+        /// <param name="interprocessFrame">Interprocess frame.</param>
+        public bool TrySend(InterprocessFrame interprocessFrame)
+        {
+            return _blockingCollection.TryAdd(interprocessFrame);
+        }
+
+        /// <summary>
+        /// Asynchronously receives interprocess frames.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Asynchronous task.</returns>
@@ -104,10 +134,7 @@ namespace RTSPPlayerServer.Streams.Interprocess
             try
             {
                 await using var inputStream = Console.OpenStandardInput();
-                await using var outputStream = Console.OpenStandardOutput();
-
                 using var reader = new StreamReader(inputStream);
-                await using var writer = new StreamWriter(outputStream) {AutoFlush = true};
 
                 while (true)
                 {
@@ -115,14 +142,46 @@ namespace RTSPPlayerServer.Streams.Interprocess
                     var interprocessFrame = _interprocessSerializer.Deserialize(message);
 
                     FrameReceived?.Invoke(this, interprocessFrame);
-                    
-                    await writer.WriteLineAsync(_interprocessSerializer.Serialize(interprocessFrame))
-                        .WithCancellation(cancellationToken);
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                
             }
             catch (Exception)
             {
+                IsHealthy = false;
+                Stop();
+            }
+        }
+        /// <summary>
+        /// Asynchronously sends interprocess frames.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Asynchronous task.</returns>
+        private async Task SendAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await using var outputStream = Console.OpenStandardOutput();
+                await using var writer = new StreamWriter(outputStream) {AutoFlush = true};
 
+                while (true)
+                {
+                    var interprocessFrame = _blockingCollection.Take(cancellationToken);
+                    var message = _interprocessSerializer.Serialize(interprocessFrame);
+
+                    await writer.WriteLineAsync(message).WithCancellation(cancellationToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                
+            }
+            catch (Exception)
+            {
+                IsHealthy = false;
+                Stop();
             }
         }
     }
