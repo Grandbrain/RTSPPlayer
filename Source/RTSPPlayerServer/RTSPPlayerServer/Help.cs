@@ -67,7 +67,7 @@ namespace RTSPPlayerServer
 
             Console.WriteLine("To start the media stream, use the following pairs:");
             Console.WriteLine("-------------------------------------------------------------");
-            Console.WriteLine($"| {"Key",9} | {"Value",34} | {"Presence",8} |");
+            Console.WriteLine($"| {"Key",9} | {"Value",17} | {"Presence",8} |");
             Console.WriteLine("-------------------------------------------------------------");
             Console.WriteLine($"| {"\"command\"",9} | {"\"start\"",17} | {"Required",8} |");
             Console.WriteLine($"| {"\"name\"",9} | {"Media stream name",17} | {"Required",8} |");
@@ -81,6 +81,7 @@ namespace RTSPPlayerServer
             Console.WriteLine($"| {"\"command\"",9} | {"\"stop\"",17} | {"Required",8} |");
             Console.WriteLine($"| {"\"name\"",9} | {"Media stream name",17} | {"Required",8} |");
             Console.WriteLine("--------------------------------------------");
+            Console.WriteLine();
             
             Console.WriteLine("To set parameters for the media stream, use the following pairs:");
             Console.WriteLine("-------------------------------------------------------------");
