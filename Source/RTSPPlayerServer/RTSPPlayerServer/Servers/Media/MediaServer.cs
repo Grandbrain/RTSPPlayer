@@ -299,8 +299,13 @@ namespace RTSPPlayerServer.Servers.Media
             parameters.TryGetValue("cancel_timeout", out var cancelTimeout);
             parameters.TryGetValue("retry_delay", out var retryDelay);
 
-            var networkCredential = new NetworkCredential(user ?? string.Empty, password ?? string.Empty);
-            var connectionParameters = new ConnectionParameters(connectionUri, networkCredential);
+            var networkCredential = string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password)
+                ? null
+                : new NetworkCredential(user, password);
+
+            var connectionParameters = networkCredential == null
+                ? new ConnectionParameters(connectionUri)
+                : new ConnectionParameters(connectionUri, networkCredential);
 
             connectionParameters.RequiredTracks = media switch
             {
