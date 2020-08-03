@@ -69,10 +69,8 @@ namespace RTSPPlayerServer
             Console.WriteLine("-------------------------------------------------------------");
             Console.WriteLine($"| {"Key",9} | {"Value",34} | {"Presence",8} |");
             Console.WriteLine("-------------------------------------------------------------");
-            Console.WriteLine($"| {"\"command\"",9} | {"\"start\"",34} | {"Required",8} |");
-            Console.WriteLine($"| {"\"name\"",9} | {"Media stream name",34} | {"Required",8} |");
-            Console.WriteLine($"| {"\"address\"",9} | {"Network address (e.g. \"127.0.0.1\")",34} | {"Required",8} |");
-            Console.WriteLine($"| {"\"port\"",9} | {"Network port",34} | {"Required",8} |");
+            Console.WriteLine($"| {"\"command\"",9} | {"\"start\"",17} | {"Required",8} |");
+            Console.WriteLine($"| {"\"name\"",9} | {"Media stream name",17} | {"Required",8} |");
             Console.WriteLine("-------------------------------------------------------------");
             Console.WriteLine();
 
@@ -83,6 +81,17 @@ namespace RTSPPlayerServer
             Console.WriteLine($"| {"\"command\"",9} | {"\"stop\"",17} | {"Required",8} |");
             Console.WriteLine($"| {"\"name\"",9} | {"Media stream name",17} | {"Required",8} |");
             Console.WriteLine("--------------------------------------------");
+            
+            Console.WriteLine("To set parameters for the media stream, use the following pairs:");
+            Console.WriteLine("-------------------------------------------------------------");
+            Console.WriteLine($"| {"Key",9} | {"Value",34} | {"Presence",8} |");
+            Console.WriteLine("-------------------------------------------------------------");
+            Console.WriteLine($"| {"\"command\"",9} | {"\"set\"",34} | {"Required",8} |");
+            Console.WriteLine($"| {"\"name\"",9} | {"Media stream name",34} | {"Required",8} |");
+            Console.WriteLine($"| {"\"address\"",9} | {"Network address (e.g. \"127.0.0.1\")",34} | {"Optional",8} |");
+            Console.WriteLine($"| {"\"port\"",9} | {"Network port",34} | {"Optional",8} |");
+            Console.WriteLine("-------------------------------------------------------------");
+            Console.WriteLine();
         }
     }
 }

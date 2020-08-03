@@ -144,7 +144,8 @@ namespace RTSPPlayerServer.Servers.Media
         /// <param name="interprocessFrame">Interprocess frame.</param>
         private void OnMessageReceived(object sender, InterprocessFrame interprocessFrame)
         {
-            if (interprocessFrame.ParameterDictionary.TryGetValue("command", out var command))
+            if (interprocessFrame?.ParameterDictionary != null &&
+                interprocessFrame.ParameterDictionary.TryGetValue("command", out var command))
                 DispatchCommand(command, interprocessFrame.ParameterDictionary);
         }
 
@@ -244,24 +245,27 @@ namespace RTSPPlayerServer.Servers.Media
         /// Dispatches a command to a specific action.
         /// </summary>
         /// <param name="command">Command.</param>
-        /// <param name="dictionary">Configuration dictionary.</param>
-        private void DispatchCommand(string command, IDictionary<string, string> dictionary)
+        /// <param name="parameters">Configuration parameters.</param>
+        private void DispatchCommand(string command, IDictionary<string, string> parameters)
         {
             try
             {
                 switch (command)
                 {
                     case "add":
-                        AddMediaStream(dictionary);
+                        AddMediaStream(parameters);
                         break;
                     case "remove":
-                        RemoveMediaStream(dictionary);
+                        RemoveMediaStream(parameters);
                         break;
                     case "start":
-                        StartMediaStream(dictionary);
+                        StartMediaStream(parameters);
                         break;
                     case "stop":
-                        StopMediaStream(dictionary);
+                        StopMediaStream(parameters);
+                        break;
+                    case "set":
+                        SetMediaStream(parameters);
                         break;
                     case "close":
                         Stop();
@@ -277,23 +281,23 @@ namespace RTSPPlayerServer.Servers.Media
         /// <summary>
         /// Adds a new media stream.
         /// </summary>
-        /// <param name="dictionary">Configuration dictionary.</param>
-        private void AddMediaStream(IDictionary<string, string> dictionary)
+        /// <param name="parameters">Configuration parameters.</param>
+        private void AddMediaStream(IDictionary<string, string> parameters)
         {
-            if (!dictionary.TryGetValue("name", out var name) ||
-                !dictionary.TryGetValue("url", out var uri) ||
+            if (!parameters.TryGetValue("name", out var name) ||
+                !parameters.TryGetValue("url", out var uri) ||
                 !Uri.TryCreate(uri, UriKind.Absolute, out var connectionUri))
                 return;
 
-            dictionary.TryGetValue("media", out var media);
-            dictionary.TryGetValue("transport", out var transport);
-            dictionary.TryGetValue("user", out var user);
-            dictionary.TryGetValue("password", out var password);
-            dictionary.TryGetValue("agent", out var agent);
-            dictionary.TryGetValue("connect_timeout", out var connectTimeout);
-            dictionary.TryGetValue("receive_timeout", out var receiveTimeout);
-            dictionary.TryGetValue("cancel_timeout", out var cancelTimeout);
-            dictionary.TryGetValue("retry_delay", out var retryDelay);
+            parameters.TryGetValue("media", out var media);
+            parameters.TryGetValue("transport", out var transport);
+            parameters.TryGetValue("user", out var user);
+            parameters.TryGetValue("password", out var password);
+            parameters.TryGetValue("agent", out var agent);
+            parameters.TryGetValue("connect_timeout", out var connectTimeout);
+            parameters.TryGetValue("receive_timeout", out var receiveTimeout);
+            parameters.TryGetValue("cancel_timeout", out var cancelTimeout);
+            parameters.TryGetValue("retry_delay", out var retryDelay);
 
             var networkCredential = new NetworkCredential(user ?? string.Empty, password ?? string.Empty);
             var connectionParameters = new ConnectionParameters(connectionUri, networkCredential);
@@ -335,17 +339,17 @@ namespace RTSPPlayerServer.Servers.Media
             IMediaStream mediaStream = new MediaStream(connectionParameters, timeSpan);
             mediaStream.FrameReceived += OnFrameReceived;
 
-            RemoveMediaStream(dictionary);
+            RemoveMediaStream(parameters);
             _mediaStreams.AddOrUpdate(name, Tuple.Create(mediaStream, null as EndPoint));
         }
 
         /// <summary>
-        /// Removes an existing media stream.
+        /// Removes the media stream.
         /// </summary>
-        /// <param name="dictionary">Configuration dictionary.</param>
-        private void RemoveMediaStream(IDictionary<string, string> dictionary)
+        /// <param name="parameters">Configuration parameters.</param>
+        private void RemoveMediaStream(IDictionary<string, string> parameters)
         {
-            if (!dictionary.TryGetValue("name", out var name)) 
+            if (!parameters.TryGetValue("name", out var name)) 
                 return;
 
             if (_mediaStreams.ContainsKey(name))
@@ -356,37 +360,55 @@ namespace RTSPPlayerServer.Servers.Media
         }
 
         /// <summary>
-        /// Starts an existing media stream.
+        /// Starts the media stream.
         /// </summary>
-        /// <param name="dictionary">Configuration dictionary.</param>
-        private void StartMediaStream(IDictionary<string, string> dictionary)
+        /// <param name="parameters">Configuration parameters.</param>
+        private void StartMediaStream(IDictionary<string, string> parameters)
         {
-            if (!dictionary.TryGetValue("name", out var name) ||
-                !dictionary.TryGetValue("address", out var address) ||
-                !dictionary.TryGetValue("port", out var port) ||
+            if (!parameters.TryGetValue("name", out var name) ||
                 !_mediaStreams.TryGetValue(name, out var tuple) ||
-                !IPAddress.TryParse(address, out var ipAddress) ||
-                !int.TryParse(port, out var ipPort) ||
-                tuple?.Item1 == null) 
+                tuple?.Item1 == null ||
+                tuple.Item2 == null) 
                 return;
             
-            tuple = Tuple.Create(tuple.Item1, new IPEndPoint(ipAddress, ipPort) as EndPoint);
-            _mediaStreams.AddOrUpdate(name, tuple);
             tuple.Item1.Start();
         }
 
         /// <summary>
-        /// Stops an existing media stream.
+        /// Stops the media stream.
         /// </summary>
-        /// <param name="dictionary">Configuration dictionary.</param>
-        private void StopMediaStream(IDictionary<string, string> dictionary)
+        /// <param name="parameters">Configuration parameters.</param>
+        private void StopMediaStream(IDictionary<string, string> parameters)
         {
-            if (!dictionary.TryGetValue("name", out var name) ||
+            if (!parameters.TryGetValue("name", out var name) ||
                 !_mediaStreams.TryGetValue(name, out var tuple) ||
                 tuple?.Item1 == null) 
                 return;
 
             tuple.Item1.Stop();
+        }
+
+        /// <summary>
+        /// Sets the parameters for the media stream.
+        /// </summary>
+        /// <param name="parameters">Configuration parameters.</param>
+        private void SetMediaStream(IDictionary<string, string> parameters)
+        {
+            if (!parameters.TryGetValue("name", out var name) ||
+                !_mediaStreams.TryGetValue(name, out var tuple) ||
+                tuple?.Item1 == null) 
+                return;
+            
+            tuple.Item1.Stop();
+
+            if (parameters.TryGetValue("address", out var address) &&
+                parameters.TryGetValue("port", out var port) &&
+                IPAddress.TryParse(address, out var ipAddress) &&
+                int.TryParse(port, out var ipPort))
+                tuple = Tuple.Create(tuple.Item1, new IPEndPoint(ipAddress, ipPort) as EndPoint);
+
+            _mediaStreams.AddOrUpdate(name, tuple);
+            tuple.Item1.Start();
         }
     }
 }
