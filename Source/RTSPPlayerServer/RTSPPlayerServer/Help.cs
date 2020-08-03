@@ -29,7 +29,7 @@ namespace RTSPPlayerServer
             Console.WriteLine($"Usage: {AppName} SERVER_NAME [AUDIO_STREAM_BASENAME [VIDEO_STREAM_BASENAME [TELEMETRY_INTERVAL]]]");
             Console.WriteLine("\"SERVER_NAME\" - the name of the server that will also identify outgoing packets;");
             Console.WriteLine("\"AUDIO_STREAM_BASENAME\" - base name of the audio stream (optional);");
-            Console.WriteLine("\"VIDEO_STREAM_BASENAME\" - base name of the video stream (optional).");
+            Console.WriteLine("\"VIDEO_STREAM_BASENAME\" - base name of the video stream (optional);");
             Console.WriteLine("\"TELEMETRY_INTERVAL\" - telemetry interval in milliseconds (optional).");
             Console.WriteLine();
 
@@ -92,6 +92,14 @@ namespace RTSPPlayerServer
             Console.WriteLine($"| {"\"address\"",9} | {"Network address (e.g. \"127.0.0.1\")",34} | {"Optional",8} |");
             Console.WriteLine($"| {"\"port\"",9} | {"Network port",34} | {"Optional",8} |");
             Console.WriteLine("-------------------------------------------------------------");
+            Console.WriteLine();
+
+            Console.WriteLine("The server emits telemetry through interprocess I/O in the following format:");
+            Console.WriteLine("\"STREAM_NAME=IS_ACTIVE|IS_HEALTHY|TRACKS\", where:");
+            Console.WriteLine("\"STREAM_NAME\" - the name of the media stream;");
+            Console.WriteLine("\"IS_ACTIVE\" - indicates whether the media stream is active (\"yes\"|\"no\");");
+            Console.WriteLine("\"IS_HEALTHY\" - indicates whether the media stream is healthy (\"yes\"|\"no\");");
+            Console.WriteLine("\"TRACKS\" - currently playing media stream tracks (\"all\"|\"audio\"|\"video\").");
             Console.WriteLine();
         }
     }
