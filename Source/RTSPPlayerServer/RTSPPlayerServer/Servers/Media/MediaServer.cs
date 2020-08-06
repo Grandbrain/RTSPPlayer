@@ -404,7 +404,8 @@ namespace RTSPPlayerServer.Servers.Media
                 tuple?.Item1 == null) 
                 return;
             
-            tuple.Item1.Stop();
+            var active = tuple.Item1.IsActive; 
+            if (active) tuple.Item1.Stop();
 
             if (parameters.TryGetValue("address", out var address) &&
                 parameters.TryGetValue("port", out var port) &&
@@ -413,7 +414,7 @@ namespace RTSPPlayerServer.Servers.Media
                 tuple = Tuple.Create(tuple.Item1, new IPEndPoint(ipAddress, ipPort) as EndPoint);
 
             _mediaStreams.AddOrUpdate(name, tuple);
-            tuple.Item1.Start();
+            if (active) tuple.Item1.Start();
         }
     }
 }
