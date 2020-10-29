@@ -18,8 +18,6 @@ There are several ways to contribute to RTSPPlayer project:
 
 ## Building
 
-* Download and extract the [latest release](https://github.com/Grandbrain/RTSPPlayer/releases) of the source code.
-
 
 ## Usage
 

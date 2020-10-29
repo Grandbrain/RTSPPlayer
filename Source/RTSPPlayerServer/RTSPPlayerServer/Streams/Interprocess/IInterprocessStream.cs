@@ -4,44 +4,23 @@ using RTSPPlayerServer.Serializers.Interprocess;
 namespace RTSPPlayerServer.Streams.Interprocess
 {
     /// <summary>
-    /// An interface that defines interprocess stream.
+    /// An interface that defines an interprocess stream.
     /// </summary>
-    internal interface IInterprocessStream
+    public interface IInterprocessStream : IStream
     {
         /// <summary>
-        /// Indicates whether the interprocess stream is active.
+        /// Raised when an interprocess frame is received.
         /// </summary>
-        bool IsActive { get; }
-        
-        /// <summary>
-        /// Indicates whether the interprocess stream is healthy.
-        /// </summary>
-        bool IsHealthy { get; }
-        
-        /// <summary>
-        /// Event handler that processes received interprocess frames.
-        /// </summary>
-        EventHandler<InterprocessFrame> FrameReceived { get; set; }
-        
-        /// <summary>
-        /// Starts the interprocess stream.
-        /// </summary>
-        void Start();
+        event EventHandler<InterprocessFrame>? FrameReceived;
 
-        /// <summary>
-        /// Stops the interprocess stream.
-        /// </summary>
-        void Stop();
-        
-        /// <summary>
-        /// Waits until the interprocess stream finishes work.
-        /// </summary>
-        void Wait();
-        
         /// <summary>
         /// Sends an interprocess frame to the standard output.
         /// </summary>
         /// <param name="interprocessFrame">Interprocess frame.</param>
+        /// <returns>
+        /// <c>true</c> if the stream is active and the parameters are valid;
+        /// <c>false</c> otherwise.
+        /// </returns>
         bool TrySend(InterprocessFrame interprocessFrame);
     }
 }

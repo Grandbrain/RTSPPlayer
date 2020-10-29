@@ -4,40 +4,19 @@ using RTSPPlayerServer.Serializers.Network;
 namespace RTSPPlayerServer.Streams.Network
 {
     /// <summary>
-    /// Interface that defines a network stream.
+    /// An interface that defines a network stream.
     /// </summary>
-    internal interface INetworkStream
+    public interface INetworkStream : IStream
     {
-        /// <summary>
-        /// Indicates whether the network stream is active.
-        /// </summary>
-        bool IsActive { get; }
-        
-        /// <summary>
-        /// Indicates whether the network stream is healthy.
-        /// </summary>
-        bool IsHealthy { get; }
-        
-        /// <summary>
-        /// Starts the network stream.
-        /// </summary>
-        void Start();
-
-        /// <summary>
-        /// Stops the network stream.
-        /// </summary>
-        void Stop();
-
-        /// <summary>
-        /// Waits until the network stream finishes work.
-        /// </summary>
-        void Wait();
-
         /// <summary>
         /// Sends a network frame to the specified endpoint.
         /// </summary>
         /// <param name="networkFrame">Network frame.</param>
-        /// <param name="endPoint">End point.</param>
-        bool TrySend(NetworkFrame networkFrame, EndPoint endPoint);
+        /// <param name="networkEndpoint">Network endpoint.</param>
+        /// <returns>
+        /// <c>true</c> if the stream is active and the parameters are valid;
+        /// <c>false</c> otherwise.
+        /// </returns>
+        bool TrySend(NetworkFrame networkFrame, IPEndPoint networkEndpoint);
     }
 }

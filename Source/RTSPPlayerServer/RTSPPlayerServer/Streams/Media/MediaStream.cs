@@ -1,25 +1,48 @@
 using System;
-using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
 using RtspClientSharp;
 using RtspClientSharp.RawFrames;
 using RtspClientSharp.RawFrames.Audio;
 using RtspClientSharp.RawFrames.Video;
-using RtspClientSharp.Rtsp;
-using RTSPPlayerServer.Utilities.Primitives;
+using RTSPPlayerServer.Base.Primitives;
 
 namespace RTSPPlayerServer.Streams.Media
 {
     /// <summary>
-    /// A class that provides media stream implementation.
+    /// A class that provides a media stream implementation.
     /// </summary>
-    internal class MediaStream : IMediaStream
+    public class MediaStream : StreamTask, IMediaStream
     {
+        /// <summary>
+        /// Time interval to repeat the media metadata.
+        /// </summary>
+        private readonly TimeSpan _metadataFrequency = TimeSpan.FromSeconds(5);
+
         /// <summary>
         /// Time span before the next repetition of an unsuccessful operation.
         /// </summary>
         private readonly TimeSpan _retryDelay = TimeSpan.FromSeconds(5);
+        
+        /// <summary>
+        /// Number of attempts to continue the unsuccessful operation.
+        /// </summary>
+        private readonly int _numberOfAttempts = 5;
+
+        /// <summary>
+        /// Connection parameters.
+        /// </summary>
+        private readonly ConnectionParameters _connectionParameters;
+
+        /// <summary>
+        /// Total number of frames received.
+        /// </summary>
+        private volatile int _totalFramesReceived;
+
+        /// <summary>
+        /// Current status of the stream.
+        /// </summary>
+        private volatile StreamStatus _status = StreamStatus.Finished;
 
         /// <summary>
         /// Audio metadata timestamp.
@@ -32,119 +55,142 @@ namespace RTSPPlayerServer.Streams.Media
         private DateTime _videoMetadataTime = DateTime.MinValue;
 
         /// <summary>
-        /// Work task.
+        /// Stream name.
         /// </summary>
-        private Task _task = Task.CompletedTask;
+        public string Name { get; }
 
         /// <summary>
-        /// Cancellation token source.
+        /// Total number of frames received.
         /// </summary>
-        private CancellationTokenSource _cancellationTokenSource;
-        
-        /// <summary>
-        /// Number of attempts to continue the operation.
-        /// </summary>
-        private const int NumberOfAttempts = 5;
+        public int TotalFramesReceived => _totalFramesReceived;
 
         /// <summary>
-        /// Indicates whether the media stream is active.
+        /// Current status of the stream.
         /// </summary>
-        public bool IsActive => !_cancellationTokenSource?.IsCancellationRequested ?? false;
+        public StreamStatus Status => _status;
 
         /// <summary>
-        /// Indicates whether the media stream is healthy.
+        /// Raised when the stream status changes.
         /// </summary>
-        public bool IsHealthy { get; private set; } = true;
+        public event EventHandler<StreamStatus, string?>? StatusChanged;
 
         /// <summary>
-        /// Contains the total number of frames received.
+        /// Raised when a media frame is received.
         /// </summary>
-        public long TotalFramesReceived { get; private set; }
+        public event EventHandler<RawFrame, bool>? FrameReceived;
 
         /// <summary>
-        /// Media stream connection parameters.
+        /// Initializes a media stream with the specified parameters.
         /// </summary>
-        public ConnectionParameters ConnectionParameters { get; }
-
-        /// <summary>
-        /// Time interval for repeating media information.
-        /// </summary>
-        public TimeSpan MetadataFrequency { get; set; } = TimeSpan.FromSeconds(5);
-
-        /// <summary>
-        /// Event handler that processes received media info.
-        /// </summary>
-        public EventHandler<RawFrame, bool> FrameReceived { get; set; }
-
-        /// <summary>
-        /// Event handler that processes connection status changes.
-        /// </summary>
-        public EventHandler<string> ConnectionStatusChanged { get; set; }
-
-        /// <summary>
-        /// Constructs a media stream with the specified connection parameters and retry delay.
-        /// </summary>
+        /// <param name="name">Stream name.</param>
         /// <param name="connectionParameters">Connection parameters.</param>
+        /// <param name="metadataFrequency">Time interval to repeat the media metadata.</param>
         /// <param name="retryDelay">Time span before the next repetition of an unsuccessful operation.</param>
-        public MediaStream(ConnectionParameters connectionParameters, TimeSpan? retryDelay = null)
+        /// <param name="numberOfAttempts">Number of attempts to continue the unsuccessful operation.</param>
+        public MediaStream(string name, ConnectionParameters connectionParameters,
+            TimeSpan? metadataFrequency = null, TimeSpan? retryDelay = null, int? numberOfAttempts = null)
         {
-            ConnectionParameters = connectionParameters ??
-                                   throw new ArgumentNullException(nameof(connectionParameters));
+            Name = name;
+            _connectionParameters = connectionParameters;
 
+            if (metadataFrequency.HasValue) _metadataFrequency = metadataFrequency.Value;
             if (retryDelay.HasValue) _retryDelay = retryDelay.Value;
+            if (numberOfAttempts.HasValue) _numberOfAttempts = numberOfAttempts.Value;
         }
 
         /// <summary>
-        /// Starts the media stream.
+        /// Starts the stream.
         /// </summary>
+        /// <returns>
+        /// <c>true</c> true if the stream was successfully started;
+        /// <c>false</c> otherwise.
+        /// </returns>
+        public bool TryStart()
+        {
+            if (!Task.IsCompleted) return false;
+
+            Start();
+            return true;
+        }
+
+        /// <summary>
+        /// Starts the stream.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The stream is not finished yet.
+        /// </exception>
         public void Start()
         {
-            if (IsActive) return;
-
-            IsHealthy = true;
-
-            _cancellationTokenSource = new CancellationTokenSource();
-            var cancellationToken = _cancellationTokenSource.Token;
+            if (!Task.IsCompleted)
+                throw new InvalidOperationException("The stream cannot be started because it has not finished yet.");
 
             _audioMetadataTime = DateTime.MinValue;
             _videoMetadataTime = DateTime.MinValue;
 
-            _task = _task.ContinueWith(_ => ReceiveAsync(cancellationToken), cancellationToken).Unwrap();
+            var cancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = cancellationTokenSource.Token;
+            var task = Task.Run(() => ReceiveAsync(cancellationToken), cancellationToken);
+
+            base.Start(task, cancellationTokenSource);
         }
 
         /// <summary>
-        /// Stops the media stream.
+        /// Stops the stream.
         /// </summary>
-        public void Stop()
-        {
-            try
-            {
-                _cancellationTokenSource?.Cancel();
-                _cancellationTokenSource?.Dispose();
-            }
-            catch (ObjectDisposedException)
-            {
+        public new void Stop() => base.Stop();
 
-            }
+        /// <summary>
+        /// Waits until the stream finishes work.
+        /// </summary>
+        public new void WaitForFinished() => base.WaitForFinished();
+
+        /// <summary>
+        /// Raises an appropriate event when the status of the stream changes.
+        /// </summary>
+        /// <param name="status">Task status.</param>
+        /// <param name="message">Error message.</param>
+        protected override void OnStatusChanged(TaskStatus status, string? message)
+        {
+            var streamStatus = status switch
+            {
+                TaskStatus.RanToCompletion => StreamStatus.Finished,
+                TaskStatus.Canceled => StreamStatus.Canceled,
+                TaskStatus.Faulted => StreamStatus.Faulted,
+                _ => StreamStatus.Active
+            };
+
+            StatusChanged?.Invoke(this, _status = streamStatus, message);
         }
 
         /// <summary>
-        /// Waits until the media stream finishes work.
+        /// Raises an appropriate event when a media frame is received.
         /// </summary>
-        public void Wait()
+        /// <param name="sender">Sender object.</param>
+        /// <param name="mediaFrame">Media frame.</param>
+        private void OnFrameReceived(object sender, RawFrame mediaFrame)
         {
-            try
-            {
-                _task?.Wait(_cancellationTokenSource?.Token ?? new CancellationToken(true));
-            }
-            catch (OperationCanceledException)
-            {
+            var metadataRequired = false;
+            var now = DateTime.UtcNow;
 
-            }
-            catch (ObjectDisposedException)
+            switch (mediaFrame)
             {
-
+                case RawAudioFrame _ when now >= _audioMetadataTime + _metadataFrequency:
+                    metadataRequired = true;
+                    _audioMetadataTime = now;
+                    break;
+                case RawH264Frame _ when now >= _videoMetadataTime + _metadataFrequency:
+                    metadataRequired = mediaFrame is RawH264IFrame;
+                    _videoMetadataTime = metadataRequired ? now : _videoMetadataTime;
+                    break;
+                case RawVideoFrame _ when now >= _videoMetadataTime + _metadataFrequency:
+                    metadataRequired = true;
+                    _videoMetadataTime = now;
+                    break;
+                case null: return;
             }
+
+            Interlocked.Increment(ref _totalFramesReceived);
+            FrameReceived?.Invoke(this, mediaFrame, metadataRequired);
         }
 
         /// <summary>
@@ -154,98 +200,41 @@ namespace RTSPPlayerServer.Streams.Media
         /// <returns>Asynchronous task.</returns>
         private async Task ReceiveAsync(CancellationToken cancellationToken)
         {
-            try
+            using var client = new RtspClient(_connectionParameters);
+            client.FrameReceived += OnFrameReceived;
+
+            var remainingConnectAttempts = _numberOfAttempts;
+            var remainingReceiveAttempts = _numberOfAttempts;
+
+            while (true)
             {
-                using var client = new RtspClient(ConnectionParameters);
-                client.FrameReceived += OnFrameReceived;
-
-                var remainingConnectAttempts = NumberOfAttempts;
-
-                while (true)
+                try
                 {
-                    OnStatusChanged("Connecting...");
+                    --remainingConnectAttempts;
+                    await client.ConnectAsync(cancellationToken);
+                }
+                catch (Exception)
+                {
+                    if (remainingConnectAttempts <= 0) throw;
 
-                    try
-                    {
-                        --remainingConnectAttempts;
-                        await client.ConnectAsync(cancellationToken);
-                    }
-                    catch (InvalidCredentialException)
-                    {
-                        OnStatusChanged("Invalid login and/or password");
+                    await Task.Delay(_retryDelay, cancellationToken);
+                    continue;
+                }
 
-                        if (remainingConnectAttempts <= 0) throw;
+                remainingConnectAttempts = _numberOfAttempts;
 
-                        await Task.Delay(_retryDelay, cancellationToken);
-                        continue;
-                    }
-                    catch (RtspClientException e)
-                    {
-                        OnStatusChanged(e.ToString());
-                        if (remainingConnectAttempts <= 0) throw;
+                try
+                {
+                    --remainingReceiveAttempts;
+                    await client.ReceiveAsync(cancellationToken);
+                }
+                catch (Exception)
+                {
+                    if (remainingReceiveAttempts <= 0) throw;
 
-                        await Task.Delay(_retryDelay, cancellationToken);
-                        continue;
-                    }
-
-                    OnStatusChanged("Receiving frames...");
-                    remainingConnectAttempts = NumberOfAttempts;
-
-                    try
-                    {
-                        await client.ReceiveAsync(cancellationToken);
-                    }
-                    catch (RtspClientException e)
-                    {
-                        OnStatusChanged(e.ToString());
-                        await Task.Delay(_retryDelay, cancellationToken);
-                    }
+                    await Task.Delay(_retryDelay, cancellationToken);
                 }
             }
-            catch (OperationCanceledException)
-            {
-                
-            }
-            catch (Exception)
-            {
-                IsHealthy = false;
-                Stop();
-            }
-        }
-
-        /// <summary>
-        /// Invokes the appropriate event handler when a media frame is received.
-        /// </summary>
-        /// <param name="sender">Sender object.</param>
-        /// <param name="frame">Media frame.</param>
-        private void OnFrameReceived(object sender, RawFrame frame)
-        {
-            var now = DateTime.Now;
-            var metadataRequired = false;
-
-            switch (frame)
-            {
-                case RawAudioFrame _ when now >= _audioMetadataTime + MetadataFrequency:
-                    _audioMetadataTime = now;
-                    metadataRequired = true;
-                    break;
-                case RawH264IFrame _ when now >= _videoMetadataTime + MetadataFrequency:
-                    _videoMetadataTime = now;
-                    metadataRequired = true;
-                    break;
-            }
-            
-            ++TotalFramesReceived;
-            FrameReceived?.Invoke(this, frame, metadataRequired);
-        }
-
-        /// <summary>
-        /// Invokes the appropriate event handler when the connection status changes.
-        /// </summary>
-        /// <param name="status">Connection status.</param>
-        private void OnStatusChanged(string status)
-        {
-            ConnectionStatusChanged?.Invoke(this, status);
         }
     }
 }

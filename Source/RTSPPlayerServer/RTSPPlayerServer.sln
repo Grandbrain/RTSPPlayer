@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RTSPPlayerServer", "RTSPPlayerServer\RTSPPlayerServer.csproj", "{378894DD-8C72-4705-9A44-B8F48593FDCF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RTSPPlayerServer.Tests", "RTSPPlayerServer.Tests\RTSPPlayerServer.Tests.csproj", "{9143DBA7-9BE3-4141-990C-AA691E3C5A44}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{378894DD-8C72-4705-9A44-B8F48593FDCF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{378894DD-8C72-4705-9A44-B8F48593FDCF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{378894DD-8C72-4705-9A44-B8F48593FDCF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9143DBA7-9BE3-4141-990C-AA691E3C5A44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9143DBA7-9BE3-4141-990C-AA691E3C5A44}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9143DBA7-9BE3-4141-990C-AA691E3C5A44}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9143DBA7-9BE3-4141-990C-AA691E3C5A44}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -3,14 +3,19 @@
 #------------------------------------------------------------------------------#
 
 HEADERS             +=                                                      \
-                        $$PWD/Window.hpp                                    \
+                        $$PWD/MainWindow.hpp                                \
+                        $$PWD/MediaSubWindow.hpp                            \
+    $$PWD/MediaSubWindowStyle.hpp
 
 SOURCES             +=                                                      \
+                        $$PWD/MainWindow.cpp                                \
+                        $$PWD/MediaSubWindow.cpp                            \
+    $$PWD/MediaSubWindowStyle.cpp \
                         $$PWD/main.cpp                                      \
-                        $$PWD/Window.cpp                                    \
 
 FORMS               +=                                                      \
-                        $$PWD/Window.ui                                     \
+                        $$PWD/MainWindow.ui                                 \
+                        $$PWD/MediaSubWindow.ui                             \
 
 RESOURCES           +=                                                      \
                         $$PWD/resources.qrc                                 \

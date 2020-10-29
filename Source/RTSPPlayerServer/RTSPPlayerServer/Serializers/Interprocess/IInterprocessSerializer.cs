@@ -1,9 +1,9 @@
 namespace RTSPPlayerServer.Serializers.Interprocess
 {
     /// <summary>
-    /// Interface that defines an interprocess serializer.
+    /// An interface that defines an interprocess serializer.
     /// </summary>
-    internal interface IInterprocessSerializer
+    public interface IInterprocessSerializer
     {
         /// <summary>
         /// Serializes the interprocess frame into a string message.

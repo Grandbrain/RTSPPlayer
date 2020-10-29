@@ -3,125 +3,159 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using RTSPPlayerServer.Base.Extensions;
+using RTSPPlayerServer.Base.Primitives;
 using RTSPPlayerServer.Serializers.Interprocess;
-using RTSPPlayerServer.Utilities.Extensions;
 
 namespace RTSPPlayerServer.Streams.Interprocess
 {
     /// <summary>
     /// A class that provides interprocess stream implementation.
     /// </summary>
-    internal class InterprocessStream : IInterprocessStream
+    public class InterprocessStream : StreamTask, IInterprocessStream
     {
         /// <summary>
-        /// A thread-safe collection for storing interprocess frames to be sent.
+        /// A thread-safe queue for storing interprocess frames to be sent.
         /// </summary>
-        private readonly BlockingCollection<InterprocessFrame> _blockingCollection = 
-            new BlockingCollection<InterprocessFrame>();
-        
+        private readonly BlockingCollection<InterprocessFrame>
+            _frameQueue = new BlockingCollection<InterprocessFrame>();
+
         /// <summary>
         /// Interprocess serializer.
         /// </summary>
         private readonly IInterprocessSerializer _interprocessSerializer;
-        
-        /// <summary>
-        /// Asynchronous task to receive interprocess frames.
-        /// </summary>
-        private Task _receiveTask = Task.CompletedTask;
-        
-        /// <summary>
-        /// Asynchronous task to send interprocess frames.
-        /// </summary>
-        private Task _sendTask = Task.CompletedTask;
-        
-        /// <summary>
-        /// Cancellation token source.
-        /// </summary>
-        private CancellationTokenSource _cancellationTokenSource;
 
         /// <summary>
-        /// Indicates whether the interprocess stream is active.
+        /// Current status of the stream.
         /// </summary>
-        public bool IsActive => !_cancellationTokenSource?.IsCancellationRequested ?? false;
-        
-        /// <summary>
-        /// Indicates whether the interprocess stream is healthy.
-        /// </summary>
-        public bool IsHealthy { get; private set; } = true;
+        private volatile StreamStatus _status = StreamStatus.Finished;
 
         /// <summary>
-        /// Event handler that processes received interprocess frames.
+        /// Stream name.
         /// </summary>
-        public EventHandler<InterprocessFrame> FrameReceived { get; set; }
-        
+        public string Name { get; }
+
         /// <summary>
-        /// Constructs an interprocess stream with the specified interprocess serializer.
+        /// Current status of the stream.
         /// </summary>
+        public StreamStatus Status => _status;
+
+        /// <summary>
+        /// Raised when the stream status changes.
+        /// </summary>
+        public event EventHandler<StreamStatus, string?>? StatusChanged;
+
+        /// <summary>
+        /// Raised when an interprocess frame is received.
+        /// </summary>
+        public event EventHandler<InterprocessFrame>? FrameReceived;
+
+        /// <summary>
+        /// Initializes an interprocess stream with the specified parameters.
+        /// </summary>
+        /// <param name="name">Stream name.</param>
         /// <param name="interprocessSerializer">Interprocess serializer.</param>
-        public InterprocessStream(IInterprocessSerializer interprocessSerializer)
+        public InterprocessStream(string name, IInterprocessSerializer interprocessSerializer)
         {
+            Name = name;
             _interprocessSerializer = interprocessSerializer;
         }
 
         /// <summary>
-        /// Starts the interprocess stream.
+        /// Starts the stream.
         /// </summary>
+        /// <returns>
+        /// <c>true</c> true if the stream was successfully started;
+        /// <c>false</c> otherwise.
+        /// </returns>
+        public bool TryStart()
+        {
+            if (!Task.IsCompleted) return false;
+
+            Start();
+            return true;
+        }
+
+        /// <summary>
+        /// Starts the stream.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The stream is not finished yet.
+        /// </exception>
         public void Start()
         {
-            if (IsActive) return;
+            if (!Task.IsCompleted)
+                throw new InvalidOperationException("The stream cannot be started because it has not finished yet.");
 
-            IsHealthy = true;
-            
-            _cancellationTokenSource = new CancellationTokenSource();
-            var cancellationToken = _cancellationTokenSource.Token;
-            
-            _receiveTask = _receiveTask.ContinueWith(_ => ReceiveAsync(cancellationToken), cancellationToken).Unwrap();
-            _sendTask = _sendTask.ContinueWith(_ => SendAsync(cancellationToken), cancellationToken).Unwrap();
+            var cancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = cancellationTokenSource.Token;
+
+            var task = Task.WhenAny(
+                Task.Run(() => SendAsync(cancellationToken), cancellationToken),
+                Task.Run(() => ReceiveAsync(cancellationToken), cancellationToken));
+
+            base.Start(task, cancellationTokenSource);
         }
 
         /// <summary>
-        /// Stops the interprocess stream.
+        /// Stops the stream.
         /// </summary>
-        public void Stop()
-        {
-            try
-            {
-                _cancellationTokenSource?.Cancel();
-                _cancellationTokenSource?.Dispose();
-            }
-            catch (ObjectDisposedException)
-            {
-
-            }
-        }
+        public new void Stop() => base.Stop();
 
         /// <summary>
-        /// Waits until the interprocess stream finishes work.
+        /// Waits until the stream finishes work.
         /// </summary>
-        public void Wait()
-        {
-            try
-            {
-                _receiveTask?.Wait(_cancellationTokenSource?.Token ?? new CancellationToken(true));
-                _sendTask?.Wait(_cancellationTokenSource?.Token ?? new CancellationToken(true));
-            }
-            catch (OperationCanceledException)
-            {
-
-            }
-            catch (ObjectDisposedException)
-            {
-                
-            }
-        }
+        public new void WaitForFinished() => base.WaitForFinished();
 
         /// <summary>
         /// Sends an interprocess frame to the standard output.
         /// </summary>
         /// <param name="interprocessFrame">Interprocess frame.</param>
+        /// <returns>
+        /// <c>true</c> if the stream is active and the parameters are valid;
+        /// <c>false</c> otherwise.
+        /// </returns>
         public bool TrySend(InterprocessFrame interprocessFrame)
         {
-            return _blockingCollection.TryAdd(interprocessFrame);
+            return _status == StreamStatus.Active
+                   && _frameQueue.TryAdd(interprocessFrame);
+        }
+
+        /// <summary>
+        /// Raises an appropriate event when the status of the stream changes.
+        /// </summary>
+        /// <param name="status">Task status.</param>
+        /// <param name="message">Error message.</param>
+        protected override void OnStatusChanged(TaskStatus status, string? message)
+        {
+            var streamStatus = status switch
+            {
+                TaskStatus.RanToCompletion => StreamStatus.Finished,
+                TaskStatus.Canceled => StreamStatus.Canceled,
+                TaskStatus.Faulted => StreamStatus.Faulted,
+                _ => StreamStatus.Active
+            };
+
+            StatusChanged?.Invoke(this, _status = streamStatus, message);
+        }
+
+        /// <summary>
+        /// Asynchronously sends interprocess frames.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Asynchronous task.</returns>
+        private async Task SendAsync(CancellationToken cancellationToken)
+        {
+            await using var outputStream = Console.OpenStandardOutput();
+            await using var streamWriter = new StreamWriter(outputStream) {AutoFlush = true};
+
+            while (!_frameQueue.IsCompleted)
+            {
+                var interprocessFrame = _frameQueue.Take(cancellationToken);
+                var message = _interprocessSerializer.Serialize(interprocessFrame);
+
+                await streamWriter.WriteLineAsync(message).WithCancellation(cancellationToken);
+            }
         }
 
         /// <summary>
@@ -131,57 +165,16 @@ namespace RTSPPlayerServer.Streams.Interprocess
         /// <returns>Asynchronous task.</returns>
         private async Task ReceiveAsync(CancellationToken cancellationToken)
         {
-            try
-            {
-                await using var inputStream = Console.OpenStandardInput();
-                using var reader = new StreamReader(inputStream);
+            await using var inputStream = Console.OpenStandardInput();
+            using var reader = new StreamReader(inputStream);
 
-                while (true)
-                {
-                    var message = await reader.ReadLineAsync().WithCancellation(cancellationToken);
-                    var interprocessFrame = _interprocessSerializer.Deserialize(message);
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var message = await reader.ReadLineAsync().WithCancellation(cancellationToken);
+                if (string.IsNullOrWhiteSpace(message)) continue;
 
-                    FrameReceived?.Invoke(this, interprocessFrame);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                
-            }
-            catch (Exception)
-            {
-                IsHealthy = false;
-                Stop();
-            }
-        }
-        /// <summary>
-        /// Asynchronously sends interprocess frames.
-        /// </summary>
-        /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Asynchronous task.</returns>
-        private async Task SendAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                await using var outputStream = Console.OpenStandardOutput();
-                await using var writer = new StreamWriter(outputStream) {AutoFlush = true};
-
-                while (true)
-                {
-                    var interprocessFrame = _blockingCollection.Take(cancellationToken);
-                    var message = _interprocessSerializer.Serialize(interprocessFrame);
-
-                    await writer.WriteLineAsync(message).WithCancellation(cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                
-            }
-            catch (Exception)
-            {
-                IsHealthy = false;
-                Stop();
+                var interprocessFrame = _interprocessSerializer.Deserialize(message);
+                FrameReceived?.Invoke(this, interprocessFrame);
             }
         }
     }

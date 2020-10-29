@@ -1,50 +1,59 @@
 ﻿using RTSPPlayerServer.Serializers.Interprocess;
 using RTSPPlayerServer.Serializers.Network;
-using RTSPPlayerServer.Servers.Media;
 using RTSPPlayerServer.Streams.Interprocess;
 using RTSPPlayerServer.Streams.Network;
+using RTSPPlayerServer.Systems.Media;
 
 namespace RTSPPlayerServer
 {
     /// <summary>
-    /// A class that provides program entry point implementation.
+    /// A class that provides the program entry point implementation.
     /// </summary>
-    internal static class Startup
+    public static class Startup
     {
+        /// <summary>
+        /// Default interprocess stream name.
+        /// </summary>
+        private static string DefaultInterprocessStreamName => "interprocess";
+
+        /// <summary>
+        /// Default network stream name.
+        /// </summary>
+        private static string DefaultNetworkStreamName => "network";
+
+        /// <summary>
+        /// Default media system name.
+        /// </summary>
+        private static string DefaultMediaSystemName => "media";
+
         /// <summary>
         /// Starts the program.
         /// </summary>
-        /// <param name="args">Program arguments.</param>
-        private static void Main(string[] args)
+        private static void Main()
         {
-            if (args.Length <= 0)
-            {
-                Help.PrintShortHelp();
-            }
-            else if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
-            {
-                Help.PrintDetailedHelp();
-            }
-            else
-            {
-                INetworkSerializer networkSerializer = new NetworkSerializer();
-                IInterprocessSerializer interprocessSerializer = new InterprocessSerializer();
+            IInterprocessSerializer interprocessSerializer = new InterprocessSerializer();
+            INetworkSerializer networkSerializer = new NetworkSerializer();
 
-                INetworkStream networkStream = new NetworkStream(networkSerializer);
-                IInterprocessStream interprocessStream = new InterprocessStream(interprocessSerializer);
+            IInterprocessStream interprocessStream =
+                new InterprocessStream(DefaultInterprocessStreamName, interprocessSerializer);
 
-                var serverName = args[0];
-                var audioBaseName = args.Length > 1 ? args[1] : string.Empty;
-                var videoBaseName = args.Length > 2 ? args[2] : string.Empty;
-                var telemetryInterval = args.Length > 3 && double.TryParse(args[3], out var result) ? result : 1000.0;
+            INetworkStream networkStream =
+                new NetworkStream(DefaultNetworkStreamName, networkSerializer);
 
-                IMediaServer mediaServer = new MediaServer(networkStream, interprocessStream, telemetryInterval);
-                mediaServer.Name = serverName;
-                mediaServer.AudioBaseName = audioBaseName;
-                mediaServer.VideoBaseName = videoBaseName;
-                mediaServer.Start();
-                mediaServer.Wait();
-            }
+            IMediaSystem mediaSystem =
+                new MediaSystem(DefaultMediaSystemName, interprocessStream, networkStream);
+
+            interprocessStream.Start();
+            networkStream.Start();
+
+            mediaSystem.Start();
+            mediaSystem.WaitForFinished();
+
+            interprocessStream.Stop();
+            networkStream.Stop();
+
+            interprocessStream.WaitForFinished();
+            networkStream.WaitForFinished();
         }
     }
 }

@@ -4,153 +4,156 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using RTSPPlayerServer.Base.Extensions;
+using RTSPPlayerServer.Base.Primitives;
 using RTSPPlayerServer.Serializers.Network;
-using RTSPPlayerServer.Utilities.Extensions;
 
 namespace RTSPPlayerServer.Streams.Network
 {
     /// <summary>
-    /// A class that provides network frame stream implementation.
+    /// A class that provides a network stream implementation.
     /// </summary>
-    internal class NetworkStream : INetworkStream
+    public class NetworkStream : StreamTask, INetworkStream
     {
-	    /// <summary>
-		/// A thread-safe collection for storing network frames to be sent.
-		/// </summary>
-		private readonly BlockingCollection<Tuple<NetworkFrame, EndPoint>> _blockingCollection =
-			new BlockingCollection<Tuple<NetworkFrame, EndPoint>>();
-	    
-	    /// <summary>
-	    /// Network serializer.
-	    /// </summary>
-	    private readonly INetworkSerializer _networkSerializer;
-	    
-	    /// <summary>
-	    /// Work task.
-	    /// </summary>
-	    private Task _task = Task.CompletedTask;
-		
-		/// <summary>
-		/// Cancellation token source.
-		/// </summary>
-		private CancellationTokenSource _cancellationTokenSource;
+        /// <summary>
+        /// A thread-safe queue for storing network frames to be sent.
+        /// </summary>
+        private readonly BlockingCollection<(NetworkFrame, IPEndPoint)> _frameQueue =
+            new BlockingCollection<(NetworkFrame, IPEndPoint)>();
 
-		/// <summary>
-		/// Indicates whether the network stream is active.
-		/// </summary>
-		public bool IsActive => !_cancellationTokenSource?.IsCancellationRequested ?? false;
-		
-		/// <summary>
-		/// Indicates whether the network stream is healthy.
-		/// </summary>
-		public bool IsHealthy { get; private set; } = true;
+        /// <summary>
+        /// Network serializer.
+        /// </summary>
+        private readonly INetworkSerializer _networkSerializer;
 
-		/// <summary>
-		/// Constructs a network stream with the specified network serializer.
-		/// </summary>
-		/// <param name="networkSerializer">Network serializer.</param>
-		public NetworkStream(INetworkSerializer networkSerializer)
-		{
-			_networkSerializer = networkSerializer;
-		}
+        /// <summary>
+        /// Current status of the stream.
+        /// </summary>
+        private volatile StreamStatus _status = StreamStatus.Finished;
 
-		/// <summary>
-		/// Starts the network stream.
-		/// </summary>
-		public void Start()
-		{
-			if (IsActive) return;
+        /// <summary>
+        /// Stream name.
+        /// </summary>
+        public string Name { get; }
 
-			IsHealthy = true;
-			
-			_cancellationTokenSource = new CancellationTokenSource();
-			var cancellationToken = _cancellationTokenSource.Token;
+        /// <summary>
+        /// Current status of the stream.
+        /// </summary>
+        public StreamStatus Status => _status;
 
-			_task = _task.ContinueWith(_ => SendAsync(cancellationToken), cancellationToken).Unwrap();
-		}
+        /// <summary>
+        /// Raised when the stream status changes.
+        /// </summary>
+        public event EventHandler<StreamStatus, string?>? StatusChanged;
 
-		/// <summary>
-		/// Stops the network stream.
-		/// </summary>
-		public void Stop()
-		{
-			try
-			{
-				_cancellationTokenSource?.Cancel();
-				_cancellationTokenSource?.Dispose();
-			}
-			catch (ObjectDisposedException)
-			{
-                
-			}
-		}
+        /// <summary>
+        /// Initializes a network stream with the specified parameters.
+        /// </summary>
+        /// <param name="name">Stream name.</param>
+        /// <param name="networkSerializer">Network serializer.</param>
+        public NetworkStream(string name, INetworkSerializer networkSerializer)
+        {
+            Name = name;
+            _networkSerializer = networkSerializer;
+        }
 
-		/// <summary>
-		/// Waits until the network stream finishes work.
-		/// </summary>
-		public void Wait()
-		{
-			try
-			{
-				_task?.Wait(_cancellationTokenSource?.Token ?? new CancellationToken(true));
-			}
-			catch (OperationCanceledException)
-			{
+        /// <summary>
+        /// Starts the stream.
+        /// </summary>
+        /// <returns>
+        /// <c>true</c> true if the stream was successfully started;
+        /// <c>false</c> otherwise.
+        /// </returns>
+        public bool TryStart()
+        {
+            if (!Task.IsCompleted) return false;
 
-			}
-			catch (ObjectDisposedException)
-			{
+            Start();
+            return true;
+        }
 
-			}
-		}
+        /// <summary>
+        /// Starts the stream.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The stream is not finished yet.
+        /// </exception>
+        public void Start()
+        {
+            if (!Task.IsCompleted)
+                throw new InvalidOperationException("The stream cannot be started because it has not finished yet.");
 
-		/// <summary>
-		/// Sends a network frame to the specified endpoint.
-		/// </summary>
-		/// <param name="networkFrame">Network frame.</param>
-		/// <param name="endPoint">End point.</param>
-		public bool TrySend(NetworkFrame networkFrame, EndPoint endPoint)
-		{
-			if (!_networkSerializer.ValidateFrame(networkFrame) || !(endPoint is IPEndPoint)) 
-				return false;
-			
-			_blockingCollection.Add(new Tuple<NetworkFrame, EndPoint>(networkFrame, endPoint));
+            var cancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = cancellationTokenSource.Token;
+            var task = Task.Run(() => SendAsync(cancellationToken), cancellationToken);
 
-			return true;
-		}
+            base.Start(task, cancellationTokenSource);
+        }
 
-		/// <summary>
-		/// Asynchronously sends network frames.
-		/// </summary>
-		/// <param name="cancellationToken">Cancellation token.</param>
-		/// <returns>Asynchronous task.</returns>
-		private async Task SendAsync(CancellationToken cancellationToken)
-		{
-			try
-			{
-				using var udpClient = new UdpClient();
+        /// <summary>
+        /// Stops the stream.
+        /// </summary>
+        public new void Stop() => base.Stop();
 
-				while (true)
-				{
-					var (networkFrame, endPoint) = _blockingCollection.Take(cancellationToken);
-					var packets = _networkSerializer.Serialize(networkFrame);
+        /// <summary>
+        /// Waits until the stream finishes work.
+        /// </summary>
+        public new void WaitForFinished() => base.WaitForFinished();
 
-					foreach (var packet in packets)
-					{
-						await udpClient.SendAsync(packet, packet.Length, endPoint as IPEndPoint)
-							.WithCancellation(cancellationToken);
-					}
-				}
-			}
-			catch (OperationCanceledException)
-			{
-				
-			}
-			catch (Exception)
-			{
-				IsHealthy = false;
-				Stop();
-			}
-		}
+        /// <summary>
+        /// Sends a network frame to the specified endpoint.
+        /// </summary>
+        /// <param name="networkFrame">Network frame.</param>
+        /// <param name="networkEndpoint">Network endpoint.</param>
+        /// <returns>
+        /// <c>true</c> if the stream is active and the parameters are valid;
+        /// <c>false</c> otherwise.
+        /// </returns>
+        public bool TrySend(NetworkFrame networkFrame, IPEndPoint networkEndpoint)
+        {
+            return _status == StreamStatus.Active
+                   && _networkSerializer.ValidateFrame(networkFrame)
+                   && _frameQueue.TryAdd((networkFrame, networkEndpoint));
+        }
+
+        /// <summary>
+        /// Raises an appropriate event when the status of the stream changes.
+        /// </summary>
+        /// <param name="status">Task status.</param>
+        /// <param name="message">Error message.</param>
+        protected override void OnStatusChanged(TaskStatus status, string? message)
+        {
+            var streamStatus = status switch
+            {
+                TaskStatus.RanToCompletion => StreamStatus.Finished,
+                TaskStatus.Canceled => StreamStatus.Canceled,
+                TaskStatus.Faulted => StreamStatus.Faulted,
+                _ => StreamStatus.Active
+            };
+
+            StatusChanged?.Invoke(this, _status = streamStatus, message);
+        }
+
+        /// <summary>
+        /// Asynchronously sends network frames.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Asynchronous task.</returns>
+        private async Task SendAsync(CancellationToken cancellationToken)
+        {
+            using var udpClient = new UdpClient();
+
+            while (!_frameQueue.IsCompleted)
+            {
+                var (networkFrame, endPoint) = _frameQueue.Take(cancellationToken);
+                var packets = _networkSerializer.Serialize(networkFrame);
+
+                foreach (var packet in packets)
+                {
+                    await udpClient.SendAsync(packet, packet.Length, endPoint)
+                        .WithCancellation(cancellationToken);
+                }
+            }
+        }
     }
 }

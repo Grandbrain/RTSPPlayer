@@ -3,276 +3,172 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using RTSPPlayerServer.Utilities;
+using RTSPPlayerServer.Base.IO;
+using RTSPPlayerServer.Base.Utilities;
 
 namespace RTSPPlayerServer.Serializers.Network
 {
-	/// <summary>
-	/// A class that provides a network serializer implementation.
-	/// </summary>
-	internal class NetworkSerializer : INetworkSerializer
-	{
-		/// <summary>
-		/// Specific protocol version to check data integrity.
-		/// </summary>
-		private static ushort DatagramProtocolVersion => 0x0100;
+    /// <summary>
+    /// A class that provides a network serializer implementation.
+    /// </summary>
+    public class NetworkSerializer : INetworkSerializer
+    {
+        /// <summary>
+        /// Protocol version to check data integrity.
+        /// </summary>
+        private static byte ProtocolVersion => 0x01;
 
-		/// <summary>
-		/// Master chunk identifier code.
-		/// </summary>
-		private static byte ChunkMasterId => 1;
+        /// <summary>
+        /// Packet header size in bytes.
+        /// </summary>
+        private static int PacketHeaderSize => 40;
 
-		/// <summary>
-		/// Slave chunk identifier code.
-		/// </summary>
-		private static byte ChunkSlaveId => 0;
+        /// <summary>
+        /// Packet maximum size in bytes.
+        /// </summary>
+        private static int PacketMaxSize => 1500;
 
-		/// <summary>
-		/// RTL answer chunk identifier code.
-		/// </summary>
-		private static byte ChunkRtlAnswerId => 127;
+        /// <summary>
+        /// Packet data maximum size in bytes.
+        /// </summary>
+        private static int PacketDataMaxSize => PacketMaxSize - PacketHeaderSize;
 
-		/// <summary>
-		/// RTL request chunk identifier code.
-		/// </summary>
-		private static byte ChunkRtlRequestId => 128;
+        /// <summary>
+        /// Frame data maximum size in bytes.
+        /// </summary>
+        private static int FrameDataMaxSize => 95_682_560;
 
-		/// <summary>
-		/// Notification chunk identifier code.
-		/// </summary>
-		private static byte ChunkNotificationId => 129;
+        /// <summary>
+        /// Task identifier size in bytes.
+        /// </summary>
+        private static int TaskIdSize => 6;
 
-		/// <summary>
-		/// Datagram header size in bytes.
-		/// </summary>
-		private static int DatagramHeaderSize => 10;
+        /// <summary>
+        /// Flow identifier size in bytes.
+        /// </summary>
+        private static int FlowIdSize => 6;
 
-		/// <summary>
-		/// Master chunk header size in bytes.
-		/// </summary>
-		private static int ChunkMasterHeaderSize => 29;
+        /// <summary>
+        /// Validates the network frame.
+        /// </summary>
+        /// <param name="networkFrame">Network frame.</param>
+        /// <returns>
+        /// <c>true</c> if the <paramref name="networkFrame"/> is valid;
+        /// <c>false</c> otherwise.
+        /// </returns>
+        public bool ValidateFrame(NetworkFrame networkFrame)
+        {
+            if (networkFrame.DataSegments.Length <= 0
+                || string.IsNullOrEmpty(networkFrame.Task)
+                || string.IsNullOrEmpty(networkFrame.Flow)
+                || Encoding.UTF8.GetByteCount(networkFrame.Task) > TaskIdSize
+                || Encoding.UTF8.GetByteCount(networkFrame.Flow) > FlowIdSize)
+                return false;
 
-#if NETWORK_PROTOCOL_EXTENDED
-		/// <summary>
-		/// Slave chunk header size in bytes.
-		/// </summary>
-		private static int ChunkSlaveHeaderSize => 29;
-#else
-		/// <summary>
-		/// Slave chunk header size in bytes.
-		/// </summary>
-		private static int ChunkSlaveHeaderSize => 25;
-#endif
+            var size = 0;
+            foreach (var segment in networkFrame.DataSegments)
+            {
+                if (segment.Count <= 0 || FrameDataMaxSize - size < segment.Count)
+                    return false;
 
-		/// <summary>
-		/// RTL chunk header size in bytes.
-		/// </summary>
-		private static int ChunkRtlHeaderSize => 4;
+                size += segment.Count;
+            }
 
-		/// <summary>
-		/// Notification chunk header size in bytes.
-		/// </summary>
-		private static int ChunkNotificationHeaderSize => 3;
+            return size <= FrameDataMaxSize;
+        }
 
-		/// <summary>
-		/// Chunk task identifier size in bytes.
-		/// </summary>
-		private static int ChunkTaskSize => 6;
+        /// <summary>
+        /// Returns completed network frames.
+        /// </summary>
+        /// <returns>List of completed network frames.</returns>
+        /// <exception cref="NotImplementedException">
+        /// This method is not implemented.
+        /// </exception>
+        public IEnumerable<NetworkFrame> CompletedFrames()
+        {
+            throw new NotImplementedException();
+        }
 
-		/// <summary>
-		/// Chunk flow identifier size in bytes.
-		/// </summary>
-		private static int ChunkFlowSize => 6;
+        /// <summary>
+        /// Serializes the network frame into datagrams.
+        /// </summary>
+        /// <param name="networkFrame">Network frame.</param>
+        /// <returns>List of datagrams.</returns>
+        /// <exception cref="ArgumentException">
+        /// The <paramref name="networkFrame"/> is invalid.
+        /// </exception>
+        public IEnumerable<byte[]> Serialize(NetworkFrame networkFrame)
+        {
+            if (!ValidateFrame(networkFrame))
+                throw new ArgumentException("The network frame is invalid", nameof(networkFrame));
 
-		/// <summary>
-		/// Frame maximum size without metadata in bytes.
-		/// </summary>
-		private static int FrameMaxSize => 31850493;
+            int index = 0, packetNumber = 0, frameSize = networkFrame.DataSegments.Sum(e => e.Count);
+            int segment = 0, segmentOffset = 0;
 
-		/// <summary>
-		/// Datagram maximum size with metadata in bytes.
-		/// </summary>
-		private static int DatagramMaxSize => 1500;
+            var packets = new List<byte[]>();
+            var taskBytes = Encoding.UTF8.GetBytes(networkFrame.Task);
+            var flowBytes = Encoding.UTF8.GetBytes(networkFrame.Flow);
 
-		/// <summary>
-		/// Chunk maximum size with metadata in bytes.
-		/// </summary>
-		private static int ChunkMaxSize => 512;
+            Array.Resize(ref taskBytes, TaskIdSize);
+            Array.Resize(ref flowBytes, FlowIdSize);
 
-		/// <summary>
-		/// Datagram maximum size without metadata in bytes.
-		/// </summary>
-		private static int DatagramDataMaxSize => DatagramMaxSize - DatagramHeaderSize;
+            while (index < frameSize)
+            {
+                var dataSize = Math.Min(PacketDataMaxSize, frameSize - index);
+                var packet = new byte[PacketHeaderSize + dataSize];
+                using var stream = new MemoryStream(packet);
+                using var writer = new EndianBinaryWriter(stream);
 
-		/// <summary>
-		/// Master chunk maximum size without metadata in bytes.
-		/// </summary>
-		private static int ChunkMasterDataMaxSize => ChunkMaxSize - ChunkMasterHeaderSize;
+                writer.Write(ProtocolVersion);
+                writer.Write((ushort) 0);
+                writer.Write((ushort) packet.Length);
+                writer.Write((ushort) packetNumber++);
+                writer.Write((uint) index);
+                writer.Write(networkFrame.Id);
+                writer.Write((uint) frameSize);
+                writer.Write(networkFrame.Number);
+                writer.Write(networkFrame.Interpretation);
+                writer.Write(taskBytes);
+                writer.Write(flowBytes);
 
-		/// <summary>
-		/// Slave chunk maximum size without metadata in bytes.
-		/// </summary>
-		private static int ChunkSlaveDataMaxSize => ChunkMaxSize - ChunkSlaveHeaderSize;
+                while (segment < networkFrame.DataSegments.Length && dataSize > 0)
+                {
+                    while (segmentOffset >= networkFrame.DataSegments[segment].Count)
+                    {
+                        ++segment;
+                        segmentOffset = 0;
+                    }
 
-		/// <summary>
-		/// Validates the network frame.
-		/// </summary>
-		/// <param name="networkFrame">Network frame.</param>
-		/// <returns><c>true</c> if <c>networkFrame</c> is valid; <c>false</c> otherwise.</returns>
-		public bool ValidateFrame(NetworkFrame networkFrame)
-		{
-			return networkFrame?.DataSegments?.Length > 0 &&
-			       !string.IsNullOrEmpty(networkFrame.Task) &&
-			       !string.IsNullOrEmpty(networkFrame.Flow) &&
-			       Encoding.Default.GetByteCount(networkFrame.Task) <= ChunkTaskSize &&
-			       Encoding.Default.GetByteCount(networkFrame.Flow) <= ChunkFlowSize &&
-			       networkFrame.DataSegments.All(e => e.Count > 0) &&
-			       networkFrame.DataSegments.Sum(e => e.Count) <= FrameMaxSize;
-		}
+                    var copySize = Math.Min(dataSize, networkFrame.DataSegments[segment].Count - segmentOffset);
+                    writer.Write(networkFrame.DataSegments[segment].Slice(segmentOffset, copySize));
 
-		/// <summary>
-		/// Returns completed frames.
-		/// </summary>
-		/// <returns>List of completed frames.</returns>
-		/// <exception cref="NotImplementedException"></exception>
-		public IEnumerable<NetworkFrame> CompletedFrames()
-		{
-			throw new NotImplementedException();
-		}
+                    segmentOffset += copySize;
+                    index += copySize;
+                    dataSize -= copySize;
+                }
 
-		/// <summary>
-		/// Serializes the network frame into datagrams.
-		/// </summary>
-		/// <param name="networkFrame">Network frame.</param>
-		/// <returns>List of datagrams.</returns>
-		public IEnumerable<byte[]> Serialize(NetworkFrame networkFrame)
-		{
-			if (!ValidateFrame(networkFrame))
-				throw new ArgumentException(nameof(networkFrame));
+                writer.Seek(1, SeekOrigin.Begin);
+                writer.Write(Checksum.Crc16(packet));
+                packets.Add(packet);
+            }
 
-			int index = 0, slaveNumber = 0, frameSize = networkFrame.DataSegments.Sum(e => e.Count);
-			int segment = 0, segmentOffset = 0;
+            return packets;
+        }
 
-			var dataArrays = new List<byte[]>();
-			var taskBytes = Encoding.Default.GetBytes(networkFrame.Task);
-			var flowBytes = Encoding.Default.GetBytes(networkFrame.Flow);
-
-			Array.Resize(ref taskBytes, ChunkTaskSize);
-			Array.Resize(ref flowBytes, ChunkFlowSize);
-
-			while (index < frameSize)
-			{
-				int left = frameSize - index, grow = 0, size = DatagramHeaderSize;
-
-				if (index == 0)
-				{
-					grow = Math.Min(left, ChunkMasterDataMaxSize);
-					size += ChunkMasterHeaderSize + grow;
-				}
-
-				while (grow < left && DatagramMaxSize - size > ChunkSlaveHeaderSize)
-				{
-					var freeSize = DatagramMaxSize - ChunkSlaveHeaderSize - size;
-					var dataSize = Math.Min(freeSize, ChunkSlaveDataMaxSize);
-					var packSize = Math.Min(dataSize, left - grow);
-					var allSize = ChunkSlaveHeaderSize + packSize;
-
-					size += allSize;
-					grow += packSize;
-				}
-
-				dataArrays.Add(new byte[size]);
-				using var stream = new MemoryStream(dataArrays.Last());
-				using var writer = new BinaryWriter(stream);
-
-				writer.Write(DatagramProtocolVersion);
-				writer.Write((ushort) size);
-				writer.Write((uint) 0);
-				writer.Write((ushort) 0);
-
-				while (stream.Position < stream.Length)
-				{
-					if (index == 0)
-					{
-						var freeSize = (int) (stream.Length - stream.Position) - ChunkMasterHeaderSize;
-						var dataSize = Math.Min(freeSize, ChunkMasterDataMaxSize);
-						var allSize = ChunkMasterHeaderSize + dataSize;
-
-						writer.Write(ChunkMasterId);
-						writer.Write((ushort) allSize);
-						writer.Write(taskBytes);
-						writer.Write(flowBytes);
-						writer.Write(networkFrame.Id);
-						writer.Write(networkFrame.Interpretation);
-						writer.Write(networkFrame.Priority);
-						writer.Write(networkFrame.Time);
-						writer.Write(networkFrame.Number);
-						writer.Write((uint) frameSize);
-
-						while (segment < networkFrame.DataSegments.Length && dataSize > 0)
-						{
-							var copySize = Math.Min(dataSize, networkFrame.DataSegments[segment].Count - segmentOffset);
-							writer.Write(networkFrame.DataSegments[segment].Slice(segmentOffset, copySize));
-
-							segmentOffset += copySize;
-							index += copySize;
-							dataSize -= copySize;
-
-							if (segmentOffset < networkFrame.DataSegments[segment].Count) continue;
-							++segment;
-							segmentOffset = 0;
-						}
-					}
-					else
-					{
-						var freeSize = (int) (stream.Length - stream.Position) - ChunkSlaveHeaderSize;
-						var dataSize = Math.Min(freeSize, ChunkSlaveDataMaxSize);
-						var allSize = ChunkSlaveHeaderSize + dataSize;
-
-						writer.Write(ChunkSlaveId);
-						writer.Write((ushort) allSize);
-						writer.Write(taskBytes);
-						writer.Write(flowBytes);
-						writer.Write(networkFrame.Id);
-						writer.Write(networkFrame.Interpretation);
-						writer.Write(networkFrame.Priority);
-						writer.Write(networkFrame.Time);
-						writer.Write((ushort) ++slaveNumber);
-#if NETWORK_PROTOCOL_EXTENDED
-						writer.Write((uint) index);
-#endif
-						while (segment < networkFrame.DataSegments.Length && dataSize > 0)
-						{
-							var copySize = Math.Min(dataSize, networkFrame.DataSegments[segment].Count - segmentOffset);
-							writer.Write(networkFrame.DataSegments[segment].Slice(segmentOffset, copySize));
-
-							segmentOffset += copySize;
-							index += copySize;
-							dataSize -= copySize;
-
-							if (segmentOffset < networkFrame.DataSegments[segment].Count) continue;
-							++segment;
-							segmentOffset = 0;
-						}
-					}
-				}
-
-				writer.Seek(8, SeekOrigin.Begin);
-				writer.Write(ChecksumUtilities.Crc16(dataArrays.Last()));
-			}
-
-			return dataArrays;
-		}
-		
-		/// <summary>
-		/// Deserializes a datagram to collect frames.
-		/// </summary>
-		/// <param name="datagram">Datagram to deserialize.</param>
-		/// <returns><c>true</c> if <c>datagram</c> successfully deserialized; <c>false</c> otherwise.</returns>
-		/// <exception cref="NotImplementedException"></exception>
-		public bool Deserialize(ArraySegment<byte> datagram)
-		{
-			throw new NotImplementedException();
-		}
-	}
+        /// <summary>
+        /// Deserializes a datagram to collect frames.
+        /// </summary>
+        /// <param name="datagram">Datagram to deserialize.</param>
+        /// <returns>
+        /// <c>true</c> if the <paramref name="datagram"/> successfully deserialized;
+        /// <c>false</c> otherwise.
+        /// </returns>
+        /// <exception cref="NotImplementedException">
+        /// This method is not implemented.
+        /// </exception>
+        public bool Deserialize(ArraySegment<byte> datagram)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }
