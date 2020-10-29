@@ -22,15 +22,13 @@ jobs:
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: 3.1.301
-    - name: Install dependencies
-      run: dotnet restore
     - name: Build
-      run: dotnet build --no-restore
+      run: dotnet build
     - name: Test
       run: dotnet test --no-restore --verbosity normal
     - if: matrix.platform == 'ubuntu-latest'
-      name: Deploy (Linux x64, self-contained, single file, trimmed)
-      run: dotnet publish -r linux-x64 -c Release -p:PublishSingleFile=true -p:PublishTrimmed=true
+      name: Deploy
+      run: dotnet publish -r linux-x64 -c Release -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true
     - if: matrix.platform == 'windows-latest'
-      name: Deploy (Windows x64, self-contained, single file, trimmed)
-      run: dotnet publish -r win-x64 -c Release -p:PublishSingleFile=true -p:PublishTrimmed=true
+      name: Deploy
+      run: dotnet publish -r win-x64 -c Release -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true
