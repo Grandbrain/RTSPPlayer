@@ -5,6 +5,10 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+    
+defaults:
+  run:
+    working-directory: Source/RTSPPlayerServer
 
 jobs:
   build:
