@@ -3,7 +3,6 @@
 [![GitHub forks](https://img.shields.io/github/forks/Grandbrain/RTSPPlayer.svg)](https://github.com/Grandbrain/RTSPPlayer/network/members)
 [![GitHub stars](https://img.shields.io/github/stars/Grandbrain/RTSPPlayer.svg)](https://github.com/Grandbrain/RTSPPlayer/stargazers)
 [![GitHub license](https://img.shields.io/github/license/Grandbrain/RTSPPlayer.svg)](https://github.com/Grandbrain/RTSPPlayer/blob/master/LICENSE)
-[![.NET Core](https://github.com/Grandbrain/RTSPPlayer/workflows/.NET%20Core/badge.svg)](https://github.com/Grandbrain/RTSPPlayer/actions)
 
 # Welcome to RTSPPlayer project!
 
