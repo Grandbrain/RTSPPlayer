@@ -10,11 +10,7 @@ jobs:
     
     strategy:
       matrix:
-        platform: [ubuntu-latest, windows-latest]
-    
-    defaults:
-      run:
-        working-directory: Source/RTSPPlayerServer
+        platform: [windows-latest]
 
     steps:
     - uses: actions/checkout@v2
@@ -23,12 +19,8 @@ jobs:
       with:
         dotnet-version: 3.1.301
     - name: Build
-      run: dotnet build
+      run: dotnet build ./Source/RTSPPlayerServer
     - name: Test
-      run: dotnet test --no-restore --verbosity normal
-    - if: matrix.platform == 'ubuntu-latest'
-      name: Deploy
-      run: dotnet publish -r linux-x64 -c Release -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true
-    - if: matrix.platform == 'windows-latest'
-      name: Deploy
-      run: dotnet publish -r win-x64 -c Release -p:PublishSingleFile=true -p:PublishTrimmed=true -p:UseAppHost=true
+      run: dotnet test ./Source/RTSPPlayerServer
+    - name: Deploy
+      run: dotnet publish ./Source/RTSPPlayerServer/RTSPPlayerServer -r win-x64 -c Release -p:PublishSingleFile=true
