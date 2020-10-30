@@ -6,15 +6,15 @@ jobs:
   rtspplayerserver-ci:
     
     name: RTSPPlayerServer CI
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{matrix.platform}}
     
     strategy:
       matrix:
         platform: [windows-latest]
     
     env:
-      SOLUTION_DIRECTORY: ./Source/RTSPPlayerServer
-      PROJECT_DIRECTORY: ./Source/RTSPPlayerServer/RTSPPlayerServer
+      SOLUTION_PATH: ./Source/RTSPPlayerServer
+      PROJECT_PATH: $env:SOLUTION_PATH/RTSPPlayerServer
     
     steps:
     - uses: actions/checkout@v2
@@ -25,10 +25,10 @@ jobs:
         dotnet-version: 3.1.301
     
     - name: Build
-      run: dotnet build $env:SOLUTION_DIRECTORY
+      run: dotnet build $env:SOLUTION_PATH
     
     - name: Test
-      run: dotnet test $env:SOLUTION_DIRECTORY
+      run: dotnet test $env:SOLUTION_PATH
     
     - name: Deploy
-      run: dotnet publish $env:PROJECT_DIRECTORY -r win-x64 -c Release -p:PublishSingleFile=true
+      run: dotnet publish $env:PROJECT_PATH -r win-x64 -c Release -p:PublishSingleFile=true
