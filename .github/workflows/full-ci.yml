@@ -42,4 +42,4 @@ jobs:
     - name: Archive
       uses: actions/upload-artifact@v2
       with:
-        path: "$env:DEPLOY_PATH/RTSPPlayerServer.exe"
+        path: ${{env.DEPLOY_PATH}}/RTSPPlayerServer.exe
