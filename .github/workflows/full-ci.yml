@@ -6,11 +6,7 @@ jobs:
   rtspplayerserver-ci:
     
     name: RTSPPlayerServer CI
-    runs-on: ${{matrix.platform}}
-    
-    strategy:
-      matrix:
-        platform: [windows-latest]
+    runs-on: windows-latest
     
     env:
       SOLUTION_PATH: ./Source/RTSPPlayerServer
@@ -20,30 +16,30 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       
-    - name: Setup .NET Core
+    - name: Setup
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: 3.1.301
      
     - name: Restore
-      run: dotnet restore $env:SOLUTION_PATH \
+      run: dotnet restore $env:SOLUTION_PATH `
            --verbosity normal
       
     - name: Build
-      run: dotnet build $env:SOLUTION_PATH   \
-           --no-restore                      \
+      run: dotnet build $env:SOLUTION_PATH   `
+           --no-restore                      `
            --verbosity normal
     
     - name: Test
-      run: dotnet test $env:SOLUTION_PATH    \
-           --no-build                        \
+      run: dotnet test $env:SOLUTION_PATH    `
+           --no-build                        `
            --verbosity normal
     
     - name: Deploy
-      run: dotnet publish $env:PROJECT_PATH  \
-           --output $env:DEPLOY_PATH         \
-           --verbosity normal                \
-           --no-build                        \
-           --runtime win-x64                 \
-           --configuration Release           \
+      run: dotnet publish $env:PROJECT_PATH  `
+           --output $env:DEPLOY_PATH         `
+           --verbosity normal                `
+           --no-build                        `
+           --runtime win-x64                 `
+           --configuration Release           `
            -p:PublishSingleFile=true
