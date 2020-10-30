@@ -22,24 +22,19 @@ jobs:
         dotnet-version: 3.1.301
      
     - name: Restore
-      run: dotnet restore $env:SOLUTION_PATH `
-           --verbosity normal
+      run: dotnet restore $env:SOLUTION_PATH
       
     - name: Build
       run: dotnet build $env:SOLUTION_PATH   `
-           --no-restore                      `
-           --verbosity normal
+           --no-restore
     
     - name: Test
       run: dotnet test $env:SOLUTION_PATH    `
-           --no-build                        `
-           --verbosity normal
+           --no-build
     
     - name: Deploy
       run: dotnet publish $env:PROJECT_PATH  `
            --output $env:DEPLOY_PATH         `
-           --verbosity normal                `
-           --no-build                        `
            --runtime win-x64                 `
            --configuration Release           `
            -p:PublishSingleFile=true
