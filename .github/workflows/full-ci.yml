@@ -25,10 +25,10 @@ jobs:
         dotnet-version: 3.1.301
     
     - name: Build
-      run: dotnet build ${SOLUTION_DIRECTORY}
+      run: dotnet build $env:SOLUTION_DIRECTORY
     
     - name: Test
-      run: dotnet test ${SOLUTION_DIRECTORY}
+      run: dotnet test $env:SOLUTION_DIRECTORY
     
     - name: Deploy
-      run: dotnet publish ${PROJECT_DIRECTORY} -r win-x64 -c Release -p:PublishSingleFile=true
+      run: dotnet publish $env:PROJECT_DIRECTORY -r win-x64 -c Release -p:PublishSingleFile=true
