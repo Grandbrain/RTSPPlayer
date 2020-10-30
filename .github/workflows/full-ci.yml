@@ -14,7 +14,7 @@ jobs:
     
     env:
       SOLUTION_DIRECTORY: ./Source/RTSPPlayerServer
-      PROJECT_DIRECTORY: $SOLUTION_DIRECTORY/RTSPPlayerServer
+      PROJECT_DIRECTORY: ./Source/RTSPPlayerServer/RTSPPlayerServer
     
     steps:
     - uses: actions/checkout@v2
@@ -23,9 +23,12 @@ jobs:
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: 3.1.301
+    
     - name: Build
-      run: dotnet build $SOLUTION_DIRECTORY
+      run: dotnet build ${SOLUTION_DIRECTORY}
+    
     - name: Test
-      run: dotnet test $SOLUTION_DIRECTORY
+      run: dotnet test ${SOLUTION_DIRECTORY}
+    
     - name: Deploy
-      run: dotnet publish $PROJECT_DIRECTORY -r win-x64 -c Release -p:PublishSingleFile=true
+      run: dotnet publish ${PROJECT_DIRECTORY} -r win-x64 -c Release -p:PublishSingleFile=true
