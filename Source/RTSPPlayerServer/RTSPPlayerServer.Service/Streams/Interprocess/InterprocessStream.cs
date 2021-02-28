@@ -17,8 +17,7 @@ namespace RTSPPlayerServer.Service.Streams.Interprocess
         /// <summary>
         /// A thread-safe queue for storing interprocess frames to be sent.
         /// </summary>
-        private readonly BlockingCollection<InterprocessFrame>
-            _frameQueue = new BlockingCollection<InterprocessFrame>();
+        private readonly BlockingCollection<InterprocessFrame> _frameQueue = new();
 
         /// <summary>
         /// Interprocess serializer.
@@ -128,7 +127,7 @@ namespace RTSPPlayerServer.Service.Streams.Interprocess
         /// <param name="message">Error message.</param>
         protected override void OnStatusChanged(TaskStatus status, string? message)
         {
-            var streamStatus = status switch
+            _status = status switch
             {
                 TaskStatus.RanToCompletion => StreamStatus.Finished,
                 TaskStatus.Canceled => StreamStatus.Canceled,
@@ -136,7 +135,7 @@ namespace RTSPPlayerServer.Service.Streams.Interprocess
                 _ => StreamStatus.Active
             };
 
-            StatusChanged?.Invoke(this, _status = streamStatus, message);
+            StatusChanged?.Invoke(this, _status, message);
         }
 
         /// <summary>

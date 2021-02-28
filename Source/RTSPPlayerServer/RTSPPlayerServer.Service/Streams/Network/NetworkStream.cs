@@ -18,8 +18,7 @@ namespace RTSPPlayerServer.Service.Streams.Network
         /// <summary>
         /// A thread-safe queue for storing network frames to be sent.
         /// </summary>
-        private readonly BlockingCollection<(NetworkFrame, IPEndPoint)> _frameQueue =
-            new BlockingCollection<(NetworkFrame, IPEndPoint)>();
+        private readonly BlockingCollection<(NetworkFrame, IPEndPoint)> _frameQueue = new();
 
         /// <summary>
         /// Network serializer.
@@ -123,7 +122,7 @@ namespace RTSPPlayerServer.Service.Streams.Network
         /// <param name="message">Error message.</param>
         protected override void OnStatusChanged(TaskStatus status, string? message)
         {
-            var streamStatus = status switch
+            _status = status switch
             {
                 TaskStatus.RanToCompletion => StreamStatus.Finished,
                 TaskStatus.Canceled => StreamStatus.Canceled,
@@ -131,7 +130,7 @@ namespace RTSPPlayerServer.Service.Streams.Network
                 _ => StreamStatus.Active
             };
 
-            StatusChanged?.Invoke(this, _status = streamStatus, message);
+            StatusChanged?.Invoke(this, _status, message);
         }
 
         /// <summary>

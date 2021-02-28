@@ -23,7 +23,7 @@ namespace RTSPPlayerServer.Service.Streams.Media
         /// Time span before the next repetition of an unsuccessful operation.
         /// </summary>
         private readonly TimeSpan _retryDelay = TimeSpan.FromSeconds(5);
-        
+
         /// <summary>
         /// Number of attempts to continue the unsuccessful operation.
         /// </summary>
@@ -151,7 +151,7 @@ namespace RTSPPlayerServer.Service.Streams.Media
         /// <param name="message">Error message.</param>
         protected override void OnStatusChanged(TaskStatus status, string? message)
         {
-            var streamStatus = status switch
+            _status = status switch
             {
                 TaskStatus.RanToCompletion => StreamStatus.Finished,
                 TaskStatus.Canceled => StreamStatus.Canceled,
@@ -159,7 +159,7 @@ namespace RTSPPlayerServer.Service.Streams.Media
                 _ => StreamStatus.Active
             };
 
-            StatusChanged?.Invoke(this, _status = streamStatus, message);
+            StatusChanged?.Invoke(this, _status, message);
         }
 
         /// <summary>
