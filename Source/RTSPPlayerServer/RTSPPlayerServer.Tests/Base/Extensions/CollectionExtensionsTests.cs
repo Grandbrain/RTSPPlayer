@@ -1,11 +1,11 @@
 using System.Collections.Generic;
 using NUnit.Framework;
-using RTSPPlayerServer.Base.Extensions;
+using RTSPPlayerServer.Service.Base.Extensions;
 
 namespace RTSPPlayerServer.Tests.Base.Extensions
 {
     /// <summary>
-    /// A class that contains tests for <see cref="RTSPPlayerServer.Base.Extensions.CollectionExtensions"/> class.
+    /// A class that contains tests for <see cref="Service.Base.Extensions.CollectionExtensions"/> class.
     /// </summary>
     [TestFixture]
     public class CollectionExtensionsTests
@@ -13,12 +13,12 @@ namespace RTSPPlayerServer.Tests.Base.Extensions
         private static IEnumerable<TestCaseData> TestCases()
         {
             yield return
-                new TestCaseData(new List<(int Key, int Value)> {(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)})
-                    .Returns(new[] {1, 2, 3, 4, 5});
+                new TestCaseData(new List<(int Key, int Value)> {(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (5, 6)})
+                    .Returns(new[] {1, 2, 3, 4, 6});
         }
 
         /// <summary>
-        /// Tests the <see cref="RTSPPlayerServer.Base.Extensions.CollectionExtensions.AddOrUpdate{TKey,TValue}"/>
+        /// Tests the <see cref="Service.Base.Extensions.CollectionExtensions.AddOrUpdate{TKey,TValue}"/>
         /// </summary>
         /// <param name="items">List of dictionary items.</param>
         /// <typeparam name="TKey">The type of keys in the dictionary.</typeparam>

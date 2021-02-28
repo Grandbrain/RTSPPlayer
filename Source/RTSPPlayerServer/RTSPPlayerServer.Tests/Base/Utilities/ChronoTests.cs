@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using RTSPPlayerServer.Base.Utilities;
+using RTSPPlayerServer.Service.Base.Utilities;
 
 namespace RTSPPlayerServer.Tests.Base.Utilities
 {

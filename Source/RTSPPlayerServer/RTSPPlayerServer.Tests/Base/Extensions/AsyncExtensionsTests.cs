@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using RTSPPlayerServer.Base.Extensions;
+using RTSPPlayerServer.Service.Base.Extensions;
 
 namespace RTSPPlayerServer.Tests.Base.Extensions
 {

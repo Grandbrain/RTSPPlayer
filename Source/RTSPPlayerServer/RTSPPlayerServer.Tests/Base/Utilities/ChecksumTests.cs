@@ -1,6 +1,6 @@
 using System.Text;
 using NUnit.Framework;
-using RTSPPlayerServer.Base.Utilities;
+using RTSPPlayerServer.Service.Base.Utilities;
 
 namespace RTSPPlayerServer.Tests.Base.Utilities
 {
