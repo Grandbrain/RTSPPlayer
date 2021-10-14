@@ -14,10 +14,3 @@
 There are several ways to contribute to RTSPPlayer project:
 * [Submit bugs](https://github.com/Grandbrain/RTSPPlayer/issues) and help me verify fixes.
 * Review the [source code changes](https://github.com/Grandbrain/RTSPPlayer/pulls).
-
-
-## Building
-
-
-## Usage
-
